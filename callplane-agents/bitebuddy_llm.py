@@ -462,13 +462,16 @@ class BiteBuddyLLMStream(llm.LLMStream):
                 if tool_calls_delta:
                     tc = tool_calls_delta[0]
                     fn = tc.get("function", {})
+                    fn_name = fn.get("name") or ""
+                    if not fn_name:
+                        continue
                     self._event_ch.send_nowait(
                         llm.ChatChunk(
                             id=chunk_id,
                             delta=llm.ChoiceDelta(
                                 tool_calls=[
                                     FunctionToolCall(
-                                        name=fn.get("name", ""),
+                                        name=fn_name,
                                         arguments=fn.get("arguments") or "",
                                         call_id=tc.get("id") or "",
                                     )
