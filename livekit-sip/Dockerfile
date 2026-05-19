@@ -21,7 +21,7 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /inject-config.py /health-wrapper.sh /docker-entrypoint.sh
 
 # Config via SIP_CONFIG_BODY → inject-config.py → SIP_CONFIG_FILE (see README.md).
-# Railway: railway.json startCommand runs /docker-entrypoint.sh (wrapper binds $PORT first).
+# Railway: railway.json startCommand starts /health-wrapper.sh then exec /docker-entrypoint.sh.
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["/docker-entrypoint.sh"]
 

@@ -220,7 +220,7 @@ Use with **livekit-sip** service after Redis and **livekit-callplane** are healt
 2. **Variables → `PORT`:** `8080` — must equal `health_port` in `SIP_CONFIG_BODY` (Railway only probes `$PORT`).
 3. **Variables → `SIP_CONFIG_BODY`:** Full YAML; `ws_url: wss://callplane-production.up.railway.app`; `redis.address` = **private** Redis host; `api_key` / `api_secret` match SFU `keys:` map (`LIVEKIT_CONFIG` → `keys:`).
 4. **Variables (optional split):** `LIVEKIT_WS_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` instead of embedding in YAML — Redis block still required in `SIP_CONFIG_BODY`.
-5. **Health:** `health-wrapper` on Railway `$PORT` (`GET /` → 200); livekit/sip `health_port` is **8081** (set by entrypoint). `livekit-sip/railway.json` **`startCommand`** = `exec /docker-entrypoint.sh`.
+5. **Health:** `health-wrapper` on Railway `$PORT` (`GET /` → 200); livekit/sip `health_port` is **8081** (set by entrypoint). `livekit-sip/railway.json` **`startCommand`** starts `health-wrapper` then `docker-entrypoint.sh`. See `livekit-sip/VERIFY-DEPLOY.md` if health fails.
 6. **Public networking → TCP Proxy #1:** application port **5060** → note `shuttle.proxy.rlwy.net:XXXXX` for Telnyx.
 7. **TCP Proxy #2 (optional):** application port **5061** if using `tls:` in config with certs mounted.
 8. **Do not expect a UDP section** — there is no Railway UI to open `5060/udp` or `10000-20000/udp` (unlike AWS security groups). Watch [Railway feedback](https://station.railway.com/feedback/adding-inbound-udp-fad19847) if you need this later.
