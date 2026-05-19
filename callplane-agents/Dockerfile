@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY agent.py .
+COPY agent.py bitebuddy_llm.py .
 
 # Pre-bundle common model weights where supported (best-effort).
 RUN python agent.py download-files || true

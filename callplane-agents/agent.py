@@ -1,31 +1,30 @@
 """
-Minimal LiveKit Agents worker for Callplane.
+LiveKit Agents worker for Callplane → BiteBuddy voice brain.
 
 Layman's terms:
-- LiveKit Server (Railway) hosts the "room" and moves audio packets around.
-- This script is a separate worker process that LiveKit dispatches when a session
-  needs an AI agent. It joins the room, listens with Deepgram, thinks with an
-  LLM, and speaks with ElevenLabs.
+- LiveKit moves phone audio in a "room".
+- This worker joins that room, turns speech into text (Deepgram), sends text to
+  BiteBuddy over a WebSocket, streams the reply back, and speaks it (ElevenLabs).
 
 Env (Railway or local):
-  LIVEKIT_URL       WebSocket URL to your server, e.g. wss://callplane-production.up.railway.app
-  LIVEKIT_API_KEY   API key *id* (same id you put under keys: in LIVEKIT_CONFIG)
-  LIVEKIT_API_SECRET Secret for that key
-  DEEPGRAM_API_KEY  Deepgram STT
-  ELEVEN_API_KEY    ElevenLabs TTS (some docs use ELEVENLABS_API_KEY — set ELEVEN_API_KEY per plugin)
-  OPENAI_API_KEY    Required below for the LLM step (swap plugin if you prefer another model)
+  LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
+  DEEPGRAM_API_KEY, ELEVEN_API_KEY
+  BITE_BUDDY_WS_URL   e.g. wss://api.bitebuddy.ai/ai/chat/ws/completions
+  AGENT_NAME          default callplane-voice (must match SIP dispatch rule)
 
 CLI:
-  python agent.py download-files   # optional: fetch VAD weights etc.
-  python agent.py dev             # local dev
-  python agent.py start           # production-style worker
+  python agent.py download-files
+  python agent.py dev
+  python agent.py start
 """
 
 from __future__ import annotations
 
 import logging
+import os
 
 from dotenv import load_dotenv
+from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentServer,
@@ -38,25 +37,30 @@ from livekit.agents import (
     metrics,
     room_io,
 )
-from livekit.plugins import deepgram, elevenlabs, openai, silero
+from livekit.plugins import deepgram, elevenlabs, silero
+
+from bitebuddy_llm import BiteBuddyLLM
 
 logger = logging.getLogger("callplane-agents")
 load_dotenv()
+
+AGENT_NAME = os.environ.get("AGENT_NAME", "callplane-voice")
+
+SIP_ATTR_TRUNK = "sip.trunkPhoneNumber"
+SIP_ATTR_CALLER = "sip.phoneNumber"
+SIP_ATTR_CALL_ID = "sip.callID"
 
 
 class CallplaneAgent(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions=(
-                "You are a short phone-test assistant for Callplane. "
-                "Keep answers under two sentences. No markdown or emojis."
+                "You are a phone assistant for a restaurant. "
+                "Keep answers concise and natural for speech. No markdown or emojis."
             ),
         )
 
-    async def on_enter(self) -> None:
-        self.session.generate_reply(
-            instructions="Say briefly that the Callplane test agent is online."
-        )
+    # BiteBuddy sends the first spoken message; do not greet from the agent scaffold.
 
 
 server = AgentServer()
@@ -69,13 +73,47 @@ def prewarm(proc: JobProcess) -> None:
 server.setup_fnc = prewarm
 
 
-@server.rtc_session()
+@server.rtc_session(agent_name=AGENT_NAME)
 async def entrypoint(ctx: JobContext) -> None:
-    ctx.log_context_fields = {"room": ctx.room.name}
+    await ctx.connect()
+
+    try:
+        sip_participant = await ctx.wait_for_participant(
+            kind=rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+        )
+        attrs = dict(sip_participant.attributes)
+    except Exception:
+        logger.warning("timed out waiting for SIP participant; falling back to room metadata")
+        attrs = {}
+
+    call_id = attrs.get(SIP_ATTR_CALL_ID) or ctx.room.name
+    business_phone = attrs.get(SIP_ATTR_TRUNK, "")
+    caller_phone = attrs.get(SIP_ATTR_CALLER, "")
+
+    ctx.log_context_fields = {
+        "room": ctx.room.name,
+        "call_id": call_id,
+        "agent": AGENT_NAME,
+    }
+
+    logger.info(
+        "SIP call_id=%s business=%s caller=%s",
+        call_id,
+        business_phone,
+        caller_phone,
+    )
+
+    bitebuddy_llm = BiteBuddyLLM.from_env(
+        call_id=call_id,
+        business_phone=business_phone,
+        customer_phone=caller_phone,
+    )
+    await bitebuddy_llm.connect()
+    ctx.add_shutdown_callback(bitebuddy_llm.aclose)
 
     session = AgentSession(
         stt=deepgram.STT(),
-        llm=openai.LLM(model="gpt-4o-mini"),
+        llm=bitebuddy_llm,
         tts=elevenlabs.TTS(),
         vad=ctx.proc.userdata["vad"],
         turn_handling=TurnHandlingOptions(),

@@ -1,17 +1,18 @@
-# Callplane Agents (skeleton)
+# Callplane Agents → BiteBuddy
 
-Separate **Python worker** from LiveKit Server. Railway runs one container per service: use one Railway service for `livekit-callplane` (this repo’s Go server) and **another** service built from this folder for agents.
+Separate **Python worker** from LiveKit Server. Phone calls: **Telnyx → livekit/sip → room → this worker** (STT/TTS here; **LLM brain** on bitebuddy-backend WebSocket).
 
 ## Environment variables
 
 | Variable | Purpose |
 |----------|---------|
-| `LIVEKIT_URL` | `wss://…` URL of your LiveKit deploy (e.g. Railway public domain). |
-| `LIVEKIT_API_KEY` | Key **id** from server `keys:` map (not the secret name alone). |
+| `LIVEKIT_URL` | `wss://…` URL of your LiveKit SFU (e.g. Railway public domain). |
+| `LIVEKIT_API_KEY` | Key **id** from server `keys:` map. |
 | `LIVEKIT_API_SECRET` | Secret for that key. |
-| `DEEPGRAM_API_KEY` | Deepgram. |
-| `ELEVEN_API_KEY` | ElevenLabs (PyPI plugin expects this name). |
-| `OPENAI_API_KEY` | Used by `livekit-plugins-openai` for the LLM in `agent.py`; swap code if you use another LLM. |
+| `DEEPGRAM_API_KEY` | Deepgram STT. |
+| `ELEVEN_API_KEY` | ElevenLabs TTS. |
+| `BITE_BUDDY_WS_URL` | Base WebSocket URL, e.g. `wss://api.bitebuddy.ai/ai/chat/ws/completions` (no trailing `/{call_id}`). |
+| `AGENT_NAME` | Worker registration name; default `callplane-voice`. Must match SIP dispatch `roomConfig.agents[].agentName`. |
 
 ## Local quick run
 
@@ -24,15 +25,67 @@ export LIVEKIT_API_KEY=...
 export LIVEKIT_API_SECRET=...
 export DEEPGRAM_API_KEY=...
 export ELEVEN_API_KEY=...
-export OPENAI_API_KEY=...
+export BITE_BUDDY_WS_URL=wss://api.bitebuddy.ai/ai/chat/ws/completions
+export AGENT_NAME=callplane-voice
 python agent.py download-files  # optional first run
 python agent.py dev
 ```
 
 ## Railway
 
-- New service → deploy from same repo with **Root Directory** `callplane-agents` (or paste Dockerfile path).
-- Set variables above; **do not** reuse `LIVEKIT_CONFIG` here — that is only for the Go media server.
-- Agents open **outbound** WebSockets to `LIVEKIT_URL`; no inbound UDP needed on the worker service.
+1. New service → same GitHub repo → **Root Directory** `callplane-agents`.
+2. Uses `callplane-agents/railway.toml` + `Dockerfile` (`python agent.py start`).
+3. Set all env vars above. Worker exposes `GET /` for Railway health (LiveKit agents HTTP server on `$PORT`).
+4. **Outbound only** to `LIVEKIT_URL` and `BITE_BUDDY_WS_URL` — no inbound UDP on this service.
 
-Replace `agent.py` with your production prompts, tools, and model choices.
+## SIP dispatch (after trunk exists)
+
+Register explicit agent dispatch so inbound PSTN jobs route to this worker (`AGENT_NAME`):
+
+```bash
+lk --url "wss://YOUR_LIVEKIT_HOST" \
+  --api-key "YOUR_KEY_ID" \
+  --api-secret "YOUR_KEY_SECRET" \
+  sip dispatch create dispatch-callplane-voice.json
+```
+
+`dispatch-callplane-voice.json`:
+
+```json
+{
+  "dispatchRule": {
+    "name": "callplane-voice-inbound",
+    "trunkIds": ["<your-inbound-trunk-id>"],
+    "rule": {
+      "dispatchRuleIndividual": {
+        "roomPrefix": "call-"
+      }
+    },
+    "roomConfig": {
+      "agents": [
+        {
+          "agentName": "callplane-voice",
+          "metadata": "telnyx-inbound"
+        }
+      ]
+    }
+  }
+}
+```
+
+Or CLI flags only (no agent — add JSON for `agentName`):
+
+```bash
+lk --url "wss://YOUR_LIVEKIT_HOST" \
+  --api-key "YOUR_KEY_ID" \
+  --api-secret "YOUR_KEY_SECRET" \
+  sip dispatch create \
+  --name callplane-voice-inbound \
+  --trunks "<inbound-trunk-id>" \
+  --individual "call-" \
+  --randomize
+```
+
+For agent dispatch you need the JSON file (or API) with `roomConfig.agents`.
+
+See also `CALLPLANE.md` and `livekit-sip/DEPLOY-SIP.md`.

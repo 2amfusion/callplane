@@ -163,11 +163,33 @@ The Python **Agents** process is **not** the Go `livekit-server`. Run it as a **
 | `LIVEKIT_API_SECRET` | Matching secret |
 | `DEEPGRAM_API_KEY` | From Deepgram |
 | `ELEVEN_API_KEY` | ElevenLabs API key (PyPI `livekit-plugins-elevenlabs`) |
-| `OPENAI_API_KEY` | Required by the skeleton `agent.py` LLM (`livekit-plugins-openai`) unless you change code |
+| `BITE_BUDDY_WS_URL` | `wss://api.bitebuddy.ai/ai/chat/ws/completions` (base URL; worker appends `/{call_id}`) |
+| `AGENT_NAME` | `callplane-voice` (must match SIP dispatch `roomConfig.agents[].agentName`) |
 
-Agents connect **outbound** to `LIVEKIT_URL` — no inbound UDP or extra public ports required on the worker service.
+Agents connect **outbound** to `LIVEKIT_URL` and **BiteBuddy** — no inbound UDP or extra public ports required on the worker service.
 
-Skeleton code: [`callplane-agents/`](callplane-agents/).
+**SIP dispatch with agent** (after inbound trunk):
+
+```json
+{
+  "dispatchRule": {
+    "name": "callplane-voice-inbound",
+    "trunkIds": ["<inbound-trunk-id>"],
+    "rule": { "dispatchRuleIndividual": { "roomPrefix": "call-" } },
+    "roomConfig": {
+      "agents": [{ "agentName": "callplane-voice", "metadata": "telnyx-inbound" }]
+    }
+  }
+}
+```
+
+```bash
+lk --url "wss://callplane-production.up.railway.app" \
+  --api-key "YOUR_KEY_ID" --api-secret "YOUR_KEY_SECRET" \
+  sip dispatch create dispatch-callplane-voice.json
+```
+
+Code: [`callplane-agents/`](callplane-agents/) (`agent.py`, `bitebuddy_llm.py`, `railway.toml`).
 
 ---
 

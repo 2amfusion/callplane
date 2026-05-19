@@ -245,3 +245,7 @@ If health still fails after a green build, paste the **first 15 deploy log lines
 ## 9) Railway UDP reality
 
 Inbound UDP (SIP 5060/udp, RTP) is not available on Railway's public edge. Signaling over **SIP/TCP** via TCP Proxy may work; **RTP often fails** without inbound UDP. See `README.md` and `CALLPLANE.md`.
+
+## Telnyx inbound trunk — auth gotcha
+
+For **inbound** calls on a Telnyx FQDN trunk, you can leave **Inbound authentication** disabled on the Telnyx connection (no username/password on the Telnyx side) and rely on **IP allowlisting** plus LiveKit `SIPInboundTrunk` `inbound_addresses` (Telnyx signaling IPs). Outbound credentials on the trunk still apply when LiveKit places outbound calls. If Telnyx requires inbound digest auth, set matching `auth-user` / `auth-pass` on both `lk sip inbound create` and the Telnyx connection — mismatched or Telnyx-only auth often shows as INVITEs that never reach a dispatch rule or fail with `401`/`403` before the agent worker runs.

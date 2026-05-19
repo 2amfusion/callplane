@@ -1,0 +1,12 @@
+# Railway config for callplane-agents ONLY (second service).
+# Root Directory in dashboard must be: callplane-agents
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "python agent.py start"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
