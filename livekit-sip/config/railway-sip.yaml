@@ -1,0 +1,42 @@
+# Template for livekit/sip on Railway (Callplane).
+# Paste into Railway → livekit-sip service → Variables → SIP_CONFIG_BODY (multiline).
+# Replace YOUR_* placeholders. Use the SAME redis + api keys as livekit-callplane.
+#
+# Railway: health checks always use the PORT variable. Set PORT=8080 on the service
+# to match health_port below (see livekit-sip/DEPLOY-SIP.md).
+
+api_key: YOUR_KEY_ID
+api_secret: YOUR_KEY_SECRET
+ws_url: wss://callplane-production.up.railway.app
+
+redis:
+  address: YOUR_REDIS_HOST:6379
+  password: YOUR_REDIS_PASSWORD
+
+# HTTP health — must match Railway variable PORT (set PORT=8080).
+health_port: 8080
+
+# SIP signaling (listen defaults to sip_port when sip_port_listen is omitted).
+sip_port: 5060
+
+# RTP media — default upstream range is 10000-20000 (UDP).
+# Railway does NOT forward arbitrary inbound UDP; narrow only for experiments.
+rtp_port: 10000-10100
+
+# Advertise a reachable address in SIP/SDP. After TCP proxy exists:
+# - EITHER keep use_external_ip: true (auto) OR set nat_1_to_1_ip / sip_hostname
+# - do NOT set both use_external_ip: true and nat_1_to_1_ip (sip will reject config).
+use_external_ip: true
+# nat_1_to_1_ip: YOUR_TCP_PROXY_PUBLIC_IP
+# sip_hostname: sip.callplane.example.com
+
+# Optional TLS signaling (expose 5061 via a second TCP proxy + certs on disk/volume).
+# tls:
+#   port: 5061
+#   port_listen: 5061
+#   certs:
+#     - cert_file: /certs/fullchain.pem
+#       key_file: /certs/privkey.pem
+
+logging:
+  level: info

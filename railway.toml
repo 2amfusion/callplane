@@ -9,6 +9,10 @@ dockerfilePath = "Dockerfile"
 # Binary reads LIVEKIT_CONFIG automatically (maps to --config-body in cmd/server/main.go).
 # Set LIVEKIT_CONFIG in Railway Variables to the full YAML (see config/railway-dev.yaml).
 # Railway injects PORT for health checks; bridge it to LiveKit's port flag (YAML port: is ignored on Railway).
+#
+# WebRTC: Railway does not expose arbitrary inbound UDP port ranges. Add a second public
+# TCP proxy in the dashboard for rtc.tcp_port (see config/railway-dev.yaml + CALLPLANE.md).
+# livekit/sip: deploy livekit-sip/ as a third service (TCP SIP proxy; inbound UDP RTP still limited on Railway).
 startCommand = "/bin/sh -c 'exec /livekit-server --port \"${PORT:-7880}\"'"
 healthcheckPath = "/"
 healthcheckTimeout = 300

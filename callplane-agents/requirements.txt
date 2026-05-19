@@ -1,0 +1,9 @@
+# Minimal Callplane voice-agent worker (extend models / prompts as needed).
+# Install codecs extras for real audio I/O.
+livekit-agents[codecs]>=1.5.9
+livekit-plugins-deepgram>=1.5.8
+livekit-plugins-elevenlabs>=1.5.9
+# Voice pipeline still needs an LLM for replies; swap for your provider.
+livekit-plugins-openai>=1.5.9
+livekit-plugins-silero>=1.5.9
+python-dotenv>=1.0.0

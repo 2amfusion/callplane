@@ -1,0 +1,20 @@
+# Railway config-as-code for livekit/sip (Callplane telephony bridge).
+# Create a NEW service in the same project, set Root Directory = livekit-sip
+# Docs: https://docs.railway.com/config-as-code
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Upstream image reads inline YAML from env SIP_CONFIG_BODY (no CLI flag needed).
+# https://github.com/livekit/sip#config
+#
+# Railway health checks always target $PORT. Set service variable PORT=8080 and the same
+# value as health_port inside SIP_CONFIG_BODY — otherwise GET / never hits the sip health server.
+# SIP signaling uses sip_port (5060) — expose that via TCP Proxy in the dashboard, not PORT.
+# Inbound UDP (5060/udp, RTP range) is NOT supported on Railway public edge as of 2026.
+# Omit startCommand — upstream ENTRYPOINT runs the sip binary with env vars.
+healthcheckPath = "/"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"

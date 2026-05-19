@@ -91,7 +91,7 @@ Copy the printed key and secret into your config under `keys:` (then into Railwa
 2. **Railway:** New Project → Deploy from GitHub → select `livekit-callplane`.
 3. **Redis:** Add Railway Redis (or external Redis). Note host, port, password.
 4. **Variables:** Use **Option A** (`LIVEKIT_CONFIG` YAML) or **Option B** (`LIVEKIT_KEYS` + `REDIS_HOST` + `REDIS_PASSWORD`) — see table above. Do **not** rely on `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` alone.
-5. **Networking:** Railway assigns `$PORT` automatically — the start command binds to it. Optionally expose **7881** for TCP ICE (`rtc.tcp_port`). Railway does not reliably expose large UDP ranges; the template enables TCP fallback.
+5. **Networking:** Railway assigns `$PORT` automatically — the start command binds to it. Add a **TCP proxy** for **`rtc.tcp_port`** (see “Railway dashboard checklist — TCP ICE”). Do **not** expect inbound UDP port ranges on Railway; see “Railway networking (UDP vs TCP)”.
 6. **Deploy** and confirm health check passes (`/` returns `OK`).
 
 ### Railway dashboard checklist
@@ -104,7 +104,170 @@ Use this when a deploy fails health checks or crashes on start:
 4. **Logs (Deploy):** Look for `starting LiveKit server` with `portHttp` matching Railway's `$PORT`. If you see `7880` while `$PORT` differs, redeploy with current `railway.toml` (`--port $PORT`).
 5. **Logs (errors):** `one of key-file or keys must be provided` → add `keys:` or `LIVEKIT_KEYS`. `could not parse config` → fix YAML. `could not register node` / Redis dial → fix Redis host/password. `ip address is required` → `rtc.use_external_ip: true` or `LIVEKIT_RTC_USE_EXTERNAL_IP=true`.
 6. **Health check:** Path `/`. **503 / service unavailable** → process not listening (crash or wrong port). **406 Not Ready** → server up but node stats stale (usually Redis). **200 OK** + body `OK` = healthy.
-7. **Public networking:** HTTP/WebSocket on Railway's public URL. TCP ICE on 7881 only if you expose that port separately.
+7. **Public networking:** HTTP/WebSocket on Railway's public URL. TCP ICE only works if you **add a TCP proxy** for `rtc.tcp_port` (see checklist below).
+8. **WebRTC media path:** If participants connect but audio/video never flows, confirm ICE-TCP port is exposed and `allow_tcp_fallback: true` is set.
+
+---
+
+## Railway networking (UDP vs TCP, 2025–2026)
+
+**Bottom line:** Railway’s **public edge is HTTP/TLS-first**. Official guidance for LiveKit on Railway is **TCP-only WebRTC media**, not a wide inbound UDP port range.
+
+| Topic | What Railway does | Implication for LiveKit |
+|-------|-------------------|-------------------------|
+| **Inbound UDP to your service** | Not supported for arbitrary UDP ports / RTP port ranges (community + official LiveKit template wording). | Do **not** rely on `port_range_start` / `port_range_end` or SIP/RTP UDP reaching your container through Railway’s public network. |
+| **Outbound UDP** | Generally works from the container to the internet. | Helpful for Redis, APIs, STUN queries — **not** a substitute for carriers sending RTP inbound to you. |
+| **Inbound TCP** | Supported via public networking / TCP proxies (single-port forwarding per mapping). | Use **`rtc.tcp_port` + `allow_tcp_fallback: true`** and expose that TCP port publicly. |
+
+**Primary sources:** [Railway LiveKit deploy template](https://railway.com/deploy/livekit) (“runs LiveKit in **TCP-only mode** since Railway does not support UDP”, TCP proxy on application port **7882** in their template); [Railway public networking docs](https://docs.railway.com/reference/public-networking) (HTTPS edge — use TCP proxies where offered for extra ports).
+
+**`LIVEKIT_CONFIG` pattern for Railway (no inbound UDP):**
+
+- Keep **`rtc.tcp_port`** set to a fixed port (this repo’s template uses **7881**; Railway’s upstream template often uses **7882** — either is fine if it matches the TCP proxy you expose).
+- Set **`rtc.allow_tcp_fallback: true`** so clients can fall back to ICE-TCP when UDP is unavailable.
+- Set **`rtc.use_external_ip: true`** so ICE candidates advertise a reachable address.
+- **Omit** wide **`port_range_*`** for a Railway-only SFU — they imply RTP over UDP that callers cannot reach through Railway’s edge.
+- **Optional — external TURN over TLS:** You can point `rtc.turn_servers` at a hosted TURN provider (often **443/TLS**) so relay traffic does not depend on Railway UDP. That is separate infra from Railway itself.
+
+### Railway dashboard checklist — TCP ICE (second public port)
+
+Use this **after** the main HTTPS/WSS domain works (`wss://…railway.app`).
+
+1. Open the **livekit-callplane** service → **Settings** → **Networking** → **Public Networking**.
+2. Keep the default **HTTPS** domain for signaling (`--port $PORT` — WebSocket to LiveKit).
+3. Add a **TCP Proxy** (wording may appear as “TCP” / “Additional port” depending on UI revision):
+   - **Application port:** same integer as `rtc.tcp_port` in `LIVEKIT_CONFIG` (e.g. **7881**).
+   - Railway shows a **hostname + port** — clients must receive ICE candidates that include this endpoint (LiveKit usually handles this when `tcp_port` and external IP discovery succeed).
+4. Redeploy if you changed `LIVEKIT_CONFIG` — ICE TCP listens only when config matches process startup.
+5. **Firewall / Telnyx:** No Railway step opens UDP `50000–60000` to your container; do not assume Telnyx RTP will land on Railway.
+
+There is **nothing to configure** in Railway for “UDP port range” analogous to AWS security groups — that’s exactly the gap.
+
+---
+
+## LiveKit Agents worker (Deepgram + ElevenLabs) on Railway
+
+The Python **Agents** process is **not** the Go `livekit-server`. Run it as a **second Railway service** (same project is fine).
+
+| Piece | Railway service | Notes |
+|-------|-----------------|-------|
+| **livekit-callplane** | Service A | Docker build from repo root (`railway.toml`). Env: `LIVEKIT_CONFIG`, Redis, `$PORT`. |
+| **callplane-agents** | Service B | Docker build with root directory **`callplane-agents/`** (uses `callplane-agents/Dockerfile`). |
+
+**Agents environment variables**
+
+| Variable | Example |
+|----------|---------|
+| `LIVEKIT_URL` | `wss://callplane-production.up.railway.app` |
+| `LIVEKIT_API_KEY` | Key **id** from server `keys:` |
+| `LIVEKIT_API_SECRET` | Matching secret |
+| `DEEPGRAM_API_KEY` | From Deepgram |
+| `ELEVEN_API_KEY` | ElevenLabs API key (PyPI `livekit-plugins-elevenlabs`) |
+| `OPENAI_API_KEY` | Required by the skeleton `agent.py` LLM (`livekit-plugins-openai`) unless you change code |
+
+Agents connect **outbound** to `LIVEKIT_URL` — no inbound UDP or extra public ports required on the worker service.
+
+Skeleton code: [`callplane-agents/`](callplane-agents/).
+
+---
+
+## Phone → Telnyx → livekit/sip on Railway
+
+Target call path:
+
+```
+PSTN / Phone → Telnyx SIP trunk → livekit/sip (Railway) → Redis ↔ livekit-callplane (WSS)
+                                                      → LiveKit room → Agents / participants
+```
+
+| Service | Railway service | Root directory | Public ports |
+|---------|-----------------|----------------|--------------|
+| **livekit-server** | `livekit-callplane` | repo root | HTTPS/WSS on `$PORT`; **TCP proxy** for `rtc.tcp_port` (e.g. 7881) |
+| **livekit/sip** | `livekit-sip` | `livekit-sip/` | **TCP proxy** for SIP 5060 (and 5061 if TLS); health HTTP 8080 |
+| **Redis** | plugin / shared | — | private `redis.railway.internal` only |
+
+Deploy scaffolding: [`livekit-sip/`](livekit-sip/) (`Dockerfile`, `railway.toml`, `config/railway-sip.yaml`, README).
+
+**Your LiveKit URL:** `wss://callplane-production.up.railway.app` — set as `ws_url` / `LIVEKIT_WS_URL` on the SIP service (same API keys as the SFU `keys:` block).
+
+### Railway UDP vs TCP (honest, 2025–2026)
+
+| Layer | Railway support | For `livekit/sip` |
+|-------|-----------------|-------------------|
+| **HTTPS / WSS** | Default public domain | Used by **livekit-server** only |
+| **Inbound TCP** | **TCP Proxy** per port | Use for **SIP signaling** (5060 TCP, 5061 TLS) |
+| **Inbound UDP** | **Not available** on public edge (Railway staff, [feedback thread](https://station.railway.com/feedback/allow-outbound-udp-traffic-0f74101c)) | **SIP 5060/udp** and **RTP 10000+** from Telnyx will not reach the container like `docker -p …/udp` |
+| **Outbound UDP** | Works | Not a substitute for carrier → you RTP |
+
+**What you can still do on Railway:** run the official `livekit/sip` container, share Redis with the SFU, expose **SIP over TCP/TLS** via TCP Proxy, and pass deploy health checks. **Full PSTN audio** usually needs inbound RTP UDP — expect **signaling-only success** or silent calls until UDP ingress exists or SIP runs on a UDP-capable host (VPS, Fly.io, LiveKit Cloud).
+
+### Deploy `livekit/sip` (third service)
+
+1. Railway project already has **livekit-callplane** + **Redis**.
+2. **New service** → same GitHub repo → **Root Directory:** `livekit-sip`.
+3. **Variables:** `PORT=8080` (must match `health_port` in YAML — Railway health checks use `$PORT`) + multiline `SIP_CONFIG_BODY` from [`livekit-sip/config/railway-sip.yaml`](livekit-sip/config/railway-sip.yaml) (replace `YOUR_*`, same Redis as SFU). Step-by-step: [`livekit-sip/DEPLOY-SIP.md`](livekit-sip/DEPLOY-SIP.md).
+4. **Networking:** add TCP proxies (below); do **not** point Telnyx at `callplane-production.up.railway.app` — that is WebSocket, not SIP.
+5. Create LiveKit **SIP inbound trunk** + **dispatch rule** (CLI/API) — [Telnyx provider doc](https://docs.livekit.io/telephony/start/providers/telnyx/).
+6. Configure Telnyx FQDN to the **SIP TCP proxy** host:port.
+
+Details: [`livekit-sip/README.md`](livekit-sip/README.md).
+
+### Railway dashboard checklist — livekit/sip
+
+Use with **livekit-sip** service after Redis and **livekit-callplane** are healthy.
+
+1. **Root directory:** `livekit-sip` (not repo root).
+2. **Variables → `PORT`:** `8080` — must equal `health_port` in `SIP_CONFIG_BODY` (Railway only probes `$PORT`).
+3. **Variables → `SIP_CONFIG_BODY`:** Full YAML; `ws_url: wss://callplane-production.up.railway.app`; `redis.address` = **private** Redis host; `api_key` / `api_secret` match SFU `keys:` map (`LIVEKIT_CONFIG` → `keys:`).
+4. **Variables (optional split):** `LIVEKIT_WS_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` instead of embedding in YAML — Redis block still required in `SIP_CONFIG_BODY`.
+5. **`health_port: 8080`** in YAML — same as `PORT`; `livekit-sip/railway.toml` health check is `GET /`.
+6. **Public networking → TCP Proxy #1:** application port **5060** → note `shuttle.proxy.rlwy.net:XXXXX` for Telnyx.
+7. **TCP Proxy #2 (optional):** application port **5061** if using `tls:` in config with certs mounted.
+8. **Do not expect a UDP section** — there is no Railway UI to open `5060/udp` or `10000-20000/udp` (unlike AWS security groups). Watch [Railway feedback](https://station.railway.com/feedback/adding-inbound-udp-fad19847) if you need this later.
+9. **Advertised address:** if using `nat_1_to_1_ip`, set `use_external_ip: false` (sip rejects both). Or use `sip_hostname` + DNS CNAME to the proxy domain (see livekit-sip README).
+10. **Logs:** Redis dial errors → wrong private host/password. No INVITEs → Telnyx pointed at wrong host/port or transport UDP-only.
+11. **Test call:** INVITE without audio → RTP/UDP blocked; move `livekit/sip` to UDP-capable infra for production PSTN.
+
+### Railway dashboard checklist — livekit-callplane (SFU) with telephony
+
+Same project; WebRTC clients and Agents still use the **HTTPS** domain:
+
+1. **`LIVEKIT_CONFIG`** with `keys:` + `redis:` + `rtc.tcp_port` + `allow_tcp_fallback: true` (see earlier checklist).
+2. **TCP Proxy** for **`rtc.tcp_port`** (e.g. 7881) — browsers/phones for WebRTC, separate from SIP TCP proxy.
+3. **Agents / API** use `LIVEKIT_URL=wss://callplane-production.up.railway.app` — not the SIP TCP proxy.
+
+### Telnyx trunk checklist (Railway TCP proxy hostname)
+
+Point Telnyx at the **SIP TCP proxy**, not the WSS URL.
+
+| # | Setting | Value |
+|---|---------|--------|
+| 1 | Connection type | **FQDN** |
+| 2 | FQDN / host | `shuttle.proxy.rlwy.net` or CNAME e.g. `sip.callplane.ai` → proxy domain |
+| 3 | Port | Railway-assigned TCP proxy port (e.g. `15140`) |
+| 4 | Transport | **TCP** or **TLS** (if 5061 proxy + certs) — avoid UDP-only on Railway |
+| 5 | Outbound auth | Credentials matching LiveKit `SIPInboundTrunk` |
+| 6 | Inbound IP allowlist | Telnyx signaling ranges in LiveKit trunk `inbound_addresses` |
+| 7 | Phone number | On connection + LiveKit trunk numbers |
+| 8 | LiveKit dispatch rule | Target room / agent for inbound calls |
+| 9 | Media (RTP) | UDP to negotiated ports — **verify on Railway**; plan VPS/Fly if no audio |
+
+Docs: [LiveKit Telnyx](https://docs.livekit.io/telephony/start/providers/telnyx/), [Telnyx LiveKit guide](https://developers.telnyx.com/docs/voice/sip-trunking/livekit-configuration-guide).
+
+### If Railway UDP never works for production PSTN
+
+| Component | Recommendation |
+|-----------|----------------|
+| **livekit-server** | Stay on Railway (TCP ICE) or move SFU to UDP-capable host |
+| **livekit/sip** | VPS / Fly.io / LiveKit Cloud telephony with `docker -p 5060:5060/udp` and RTP UDP range |
+| **Agents** | Railway OK (outbound to `LIVEKIT_URL`) |
+
+```bash
+# VPS pattern (full UDP) — contrast with Railway TCP-only proxies
+docker run --rm --network host \
+  -e SIP_CONFIG_BODY="$(cat config.yaml)" \
+  livekit/sip:v1.3.0
+```
 
 ---
 
@@ -147,5 +310,7 @@ LiveKit config should cover: **port**, **redis**, **keys**, **rtc**, **logging**
 |------|---------|
 | `railway.toml` | Railway build/deploy settings |
 | `config/railway-dev.yaml` | Placeholder YAML template for `LIVEKIT_CONFIG` |
+| `callplane-agents/` | Minimal Agents worker (Dockerfile + `agent.py`) for Railway service #2 |
+| `livekit-sip/` | Official `livekit/sip` wrapper for Railway service #3 (Telnyx PSTN) |
 | `config-sample.yaml` | Upstream LiveKit sample (full options) |
 | `CLAUDE.md` | Agent gotchas for this repo |

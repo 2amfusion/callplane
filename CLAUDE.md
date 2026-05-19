@@ -22,8 +22,9 @@ docker build -t livekit-callplane .
 - **Option B:** `LIVEKIT_KEYS` + `REDIS_HOST` + `REDIS_PASSWORD` (+ `LIVEKIT_RTC_*` as in CALLPLANE.md) — no `LIVEKIT_CONFIG`.
 - **`LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` are NOT read by livekit-server** — client/callplane-api names only; server needs `keys:` in YAML or `LIVEKIT_KEYS`.
 - Generate keys: `go run ./cmd/server generate-keys`
-- **UDP:** Railway does not expose wide UDP port ranges reliably — use `rtc.tcp_port` + `allow_tcp_fallback`; avoid large `port_range_*` on Railway
-- Optionally expose TCP **7881** publicly for TCP ICE (`rtc.tcp_port` in config)
+- **UDP:** Railway public networking does **not** support arbitrary **inbound UDP** (wide RTP/ICE/SIP media). Official Railway LiveKit template runs **TCP-only** WebRTC + TCP proxy (often port **7882** in their template). Use `rtc.tcp_port` + `allow_tcp_fallback` here; omit wide `port_range_*` for Railway-only SFU.
+- **`livekit/sip`:** third Railway service in `livekit-sip/` — **`SIP_CONFIG_BODY`** (official upstream env name), TCP proxy on **5060**, **`health_port` 8080**. Set **`PORT=8080`** on the service too — Railway health checks always probe **`$PORT`**, which must match **`health_port`** or deploy fails. Telnyx uses TCP proxy hostname, **not** `wss://…railway.app`. Inbound RTP UDP still blocked on Railway — see `CALLPLANE.md` “Phone → Telnyx”. Deploy checklist: `livekit-sip/DEPLOY-SIP.md`.
+- Expose **`rtc.tcp_port`** via Railway **TCP Proxy** (second public port), matching `LIVEKIT_CONFIG` (this repo defaults to **7881**).
 
 ### Railway troubleshooting
 
@@ -35,7 +36,7 @@ docker build -t livekit-callplane .
 | `one of key-file or keys must be provided` | `LIVEKIT_CONFIG` missing or has no `keys:` block |
 | `could not parse config` | Invalid YAML in `LIVEKIT_CONFIG` (unquoted `:` in secrets, bad indentation) |
 | `ip address is required and not set` | RTC IP discovery failed; ensure `rtc.use_external_ip: true` in config |
-| `could not register node` / Redis errors | Wrong Redis host (use Railway internal URL, e.g. `${{Redis.REDIS_URL}}` or plugin host:port) |
+| Health check fails (SIP service) | Set **`PORT=8080`** to match **`health_port`** in `SIP_CONFIG_BODY` — Railway only probes `$PORT` |
 
 Health: `GET /` returns **200 OK** when node stats are fresh (<4s). Brief **406** right after listen is normal; Railway retries until 200 or timeout (300s).
 

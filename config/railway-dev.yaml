@@ -13,7 +13,9 @@
 #
 # Railway notes:
 # - Do NOT set port: here — railway.toml passes --port $PORT (Railway injects PORT).
-# - UDP port ranges are unreliable on Railway; use tcp_port + allow_tcp_fallback below.
+# - Inbound UDP (wide RTP/ICE ranges, SIP RTP) is NOT available on Railway public
+#   networking as of 2025–2026. Run WebRTC media over ICE-TCP instead — see CALLPLANE.md
+#   "Railway networking (UDP vs TCP)".
 # - Use Railway Redis private hostname (not localhost). Unfilled YOUR_* → crash at startup.
 # - Quote redis.password if it contains ':' or '#' (YAML special chars).
 
@@ -26,13 +28,15 @@ keys:
   YOUR_KEY_ID: YOUR_KEY_SECRET
 
 rtc:
-  # TCP fallback when UDP is blocked or unavailable (common on PaaS).
+  # ICE over TCP — expose this port publicly on Railway (TCP proxy) so browsers/phones can connect.
+  # Official Railway "Deploy LiveKit" template uses 7882; 7881 is also common. Pick one and match
+  # the port you expose in the Railway dashboard.
   tcp_port: 7881
   allow_tcp_fallback: true
   use_external_ip: true
-  # Avoid opening a wide UDP range on Railway — omit port_range_start/end or keep narrow if you add UDP later.
-  # port_range_start: 50000
-  # port_range_end: 60000
+
+  # For hybrid setups (SFU on a VPS with UDP, control plane elsewhere), set on the VPS:
+  # udp_port + port_range_* per LiveKit self-hosting docs — not in Railway LIVEKIT_CONFIG.
 
 logging:
   level: info
