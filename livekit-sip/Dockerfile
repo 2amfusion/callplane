@@ -4,6 +4,10 @@
 
 FROM livekit/sip:v1.3.0
 
+# Upstream: ENTRYPOINT ["livekit-sip", "--config=/sip/config.yaml"], USER unset (root).
+# We replace ENTRYPOINT with /start.sh so health-wrapper binds Railway $PORT first.
+ENV PYTHONUNBUFFERED=1
+
 # YAML merge/validate for health_port injection (replaces fragile sed).
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 python3-yaml curl \

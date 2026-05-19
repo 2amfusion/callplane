@@ -4,7 +4,7 @@
 set -e
 
 log() {
-  printf '[docker-entrypoint] %s\n' "$*" >&2
+  printf '[docker-entrypoint] %s\n' "$*"
 }
 
 fail() {
@@ -41,5 +41,4 @@ unset SIP_CONFIG_BODY
 
 log "Starting livekit-sip --config=${SIP_CONFIG_FILE} (internal health on ${SIP_INTERNAL_HEALTH_PORT:-8081})"
 
-# Foreground SIP; start.sh (PID 1) keeps the background health-wrapper alive.
 exec /bin/livekit-sip --config="${SIP_CONFIG_FILE}"

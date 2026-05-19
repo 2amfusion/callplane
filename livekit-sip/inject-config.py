@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 try:
     import yaml
 except ImportError as e:
-    print(f"[inject-config] ERROR: PyYAML required ({e})", file=sys.stderr)
+    print(f"[inject-config] ERROR: PyYAML required ({e)}")
     sys.exit(1)
 
 OUT_PATH = Path(os.environ.get("SIP_CONFIG_FILE", "/tmp/sip-config.yaml"))
@@ -20,7 +20,7 @@ PLACEHOLDER_RE = re.compile(r"YOUR_(KEY_ID|KEY_SECRET|REDIS_HOST|REDIS_PASSWORD)
 
 
 def log(msg: str) -> None:
-    print(f"[inject-config] {msg}", file=sys.stderr)
+    print(f"[inject-config] {msg}", flush=True)
 
 
 def fail(msg: str, cfg: dict[str, Any] | None = None) -> None:
@@ -28,7 +28,7 @@ def fail(msg: str, cfg: dict[str, Any] | None = None) -> None:
     if cfg is not None:
         log("--- merged config (passwords redacted) ---")
         redacted = redact(cfg)
-        print(yaml.safe_dump(redacted, default_flow_style=False, sort_keys=False), file=sys.stderr)
+        print(yaml.safe_dump(redacted, default_flow_style=False, sort_keys=False), flush=True)
     sys.exit(1)
 
 

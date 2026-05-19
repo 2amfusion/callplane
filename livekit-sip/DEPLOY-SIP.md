@@ -19,7 +19,8 @@ Railway only probes **`$PORT`**. livekit/sip does **not** read `PORT`; the entry
 |---------|---------|
 | **Health #1 instant fail, no `[docker-entrypoint]`** | Wrong Root Directory (parent SFU `railway.toml`) or custom **startCommand** on this service |
 | **Health #1 instant fail, no `[health-wrapper]`** | Old image or entrypoint never ran — redeploy latest `main` |
-| **Wrapper OK, SIP crashes** | Redis/YAML/STUN — check logs after `[health-wrapper] Listening` |
+| **Build logs only, no runtime lines** | Open **Deploy logs** (runtime tab), not Build logs — all startup logs go to **stdout** |
+| **Wrapper OK, SIP crashes** | Redis/YAML/STUN — check **Deploy logs** after `[health-wrapper] Listening` |
 
 Startup order: wrapper on `$PORT` → YAML/Redis → SIP (STUN if `use_external_ip`) → internal health on **8081**. Use **`host:6379`** for Redis (not `redis://` in YAML). Link Redis in the same project or copy `redis.railway.internal` from SFU `LIVEKIT_CONFIG`.
 
@@ -32,8 +33,8 @@ Startup order: wrapper on `$PORT` → YAML/Redis → SIP (STUN if `use_external_
 1. Open the **same Railway project** as **livekit-callplane** and **Redis**.
 2. **New** → **GitHub** → select the **`livekit-callplane`** repo.
 3. **Settings → Root Directory:** `livekit-sip` (exactly).
-4. Confirm **Config-as-code** picks up `livekit-sip/railway.json` (`startCommand` = `/start.sh`, `healthcheckPath = "/"`). Do **not** use `startCommand = ""` or the SFU `livekit-server` command.
-5. **Settings → Deploy:** Start Command should be `/start.sh`. That script binds `health-wrapper` on Railway `$PORT` **before** SIP config work. If the dashboard still shows `livekit-server --port …`, fix Root Directory and redeploy latest `main`. See **`VERIFY-DEPLOY.md`** if health still fails.
+4. Confirm **Config-as-code** picks up `livekit-sip/railway.json` (`startCommand` = **null** → Dockerfile `ENTRYPOINT ["/start.sh"]`). Do **not** set a custom Start Command to `livekit-server …` or `/start.sh` in the dashboard unless null fails to clear a stale value.
+5. **Settings → Deploy:** Start Command should be **empty / inherited from Dockerfile** (`/start.sh` via `ENTRYPOINT`). If the dashboard still shows `livekit-server --port …`, fix Root Directory and redeploy latest `main`. See **`VERIFY-DEPLOY.md`** if health still fails.
 
 ### Wrong service / root directory
 
@@ -159,7 +160,7 @@ Railway fails if **`GET $PORT/`** never returns **200** within **300s**.
 | `use_external_ip and nat_1_to_1_ip` | Conflicting NAT | Use one mode only |
 | `connection refused` (Redis) | Wrong host/password or `redis://` URL | Use `host:6379` (e.g. `redis.railway.internal:6379`), not `redis://…` |
 | `invalid YAML` / inject-config error | Bad paste, tabs, smart quotes | Re-paste template; check deploy log for redacted config dump |
-| No logs at all | Wrong root directory or build failed | Root Directory = `livekit-sip` |
+| No logs at all | Wrong tab (Build vs Deploy), wrong root, or build failed | **Deploy logs** tab; Root Directory = `livekit-sip` |
 | Health #1 instant fail, no `[docker-entrypoint]` | Parent `railway.toml` / wrong Dockerfile | Root Directory must be **`livekit-sip`** |
 | Instant fail, `livekit-sip` usage error in logs | SFU `startCommand` copied to this service | Root = `livekit-sip`; startCommand matches `railway.json` (see §10, `VERIFY-DEPLOY.md`) |
 | Deploy passes but no SIP / no `service ready` | Redis or STUN | Fix `redis.address`; keep `use_external_ip: false` |
@@ -191,7 +192,23 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/   # expect 200
 
 ---
 
-## 10) Railway deploy UI checklist (screenshot these)
+## 10) If health still fails after pushing latest `main`
+
+Check in order:
+
+1. **`git log -1 --oneline`** on GitHub `main` includes the latest `fix(livekit-sip):` commit — Railway only builds pushed commits.
+2. **Root Directory** = `livekit-sip` (build log must show `COPY health-wrapper.py`).
+3. **Deploy logs** (runtime), not Build logs — first line should be `[start.sh] Railway deploy starting`.
+4. **Start Command** in dashboard is **empty** (inherits Dockerfile `ENTRYPOINT`). If it shows `livekit-server`, clear it and redeploy.
+5. **Delete manual `PORT` variable** — Railway injects `$PORT`; a pinned `8080` can desync the probe.
+6. **Debug wrapper only:** set `HEALTH_ONLY=1` on the service, redeploy. If health passes, the wrapper works — fix `SIP_CONFIG_BODY` / Redis next. Remove `HEALTH_ONLY` after.
+7. If `HEALTH_ONLY=1` still fails: wrong service, wrong image, or networking — paste first 15 **Deploy log** lines in support.
+
+**Railway logging:** Startup scripts log to **stdout** (not stderr) so lines appear in Deploy logs.
+
+---
+
+## 11) Railway deploy UI checklist (screenshot these)
 
 Open the **livekit-sip** service (not livekit-callplane SFU) → **Settings**:
 
@@ -201,17 +218,18 @@ Open the **livekit-sip** service (not livekit-callplane SFU) → **Settings**:
 | **Builder** | Dockerfile |
 | **Dockerfile path** | `Dockerfile` (relative to root — not repo-root SFU Dockerfile) |
 | **Config-as-code** | `livekit-sip/railway.json` detected |
-| **Start Command** | `/start.sh` |
-| **Healthcheck path** | `/` |
+| **Start Command** | Empty (null — uses Dockerfile `ENTRYPOINT /start.sh`) |
+| **Healthcheck path** | null in `railway.json` (Railway default) or `/` if you re-enable HTTP probe |
 | **Healthcheck timeout** | `300` |
 
-**Deploy logs — first lines should include (in order):**
+**Deploy logs** (runtime tab — not Build logs) — first lines should include (in order):
 
-1. `[health-wrapper] starting`
-2. `[health-wrapper] PORT=…` (must match Railway-injected `$PORT`, not a hardcoded guess)
-3. `[health-wrapper] Listening on 0.0.0.0:…`
-4. `[docker-entrypoint] entrypoint start (PORT=…`
-5. `[docker-entrypoint] health-wrapper ready on PORT=…`
+1. `[start.sh] Railway deploy starting pid=… PORT=…`
+2. `[health-wrapper] starting`
+3. `[health-wrapper] PORT=…` (must match Railway-injected `$PORT`, not a hardcoded guess)
+4. `[health-wrapper] Listening on …` (`[::]` dual-stack or `0.0.0.0`)
+5. `[docker-entrypoint] entrypoint start (PORT=…`
+6. `[docker-entrypoint] health responding on PORT=…`
 
 | Log pattern | Meaning |
 |-------------|---------|

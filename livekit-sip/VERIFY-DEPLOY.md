@@ -40,11 +40,12 @@ If build logs show **`livekit-server`** or **no `health-wrapper.sh` COPY**, Root
 
 ## 3) Deploy logs — first 15 lines
 
-After deploy, open **Deploy logs** (runtime, not build).
+After deploy, open **Deploy logs** (runtime tab — **not** Build logs). All `[start.sh]` / `[health-wrapper]` / `[docker-entrypoint]` lines are written to **stdout** so Railway shows them here.
 
 **Healthy SIP service (in order):**
 
-1. `[health-wrapper] starting`
+1. `[start.sh] Railway deploy starting pid=… PORT=…`
+2. `[health-wrapper] starting`
 2. `[health-wrapper] PORT=<number>` — must match Railway-injected `$PORT`
 3. `[health-wrapper] Listening on 0.0.0.0:<same number>`
 4. `[docker-entrypoint] entrypoint start (PORT=<same> …)`
@@ -61,7 +62,19 @@ After deploy, open **Deploy logs** (runtime, not build).
 
 ---
 
-## 4) Optional Railway variable
+## 4) Debug: wrapper-only deploy
+
+Set on the **livekit-sip** service, redeploy, then check health:
+
+| Variable | Value |
+|----------|-------|
+| `HEALTH_ONLY` | `1` |
+
+If health passes with `HEALTH_ONLY=1` but fails normally, the wrapper and Railway networking are fine — fix `SIP_CONFIG_BODY` / Redis / STUN. Remove `HEALTH_ONLY` after testing.
+
+---
+
+## 5) Optional Railway variable
 
 If health flaps during slow SIP startup, add on the **livekit-sip** service:
 
@@ -73,7 +86,7 @@ If health flaps during slow SIP startup, add on the **livekit-sip** service:
 
 ---
 
-## 5) Dashboard checklist (screenshot these)
+## 6) Dashboard checklist (screenshot these)
 
 **Settings → Source**
 
@@ -81,8 +94,8 @@ If health flaps during slow SIP startup, add on the **livekit-sip** service:
 
 **Settings → Deploy**
 
-- Start Command: `/start.sh`
-- Healthcheck path: `/`
+- Start Command: **empty** (Dockerfile `ENTRYPOINT /start.sh`)
+- Healthcheck path: null or `/` (see `railway.json`)
 - Healthcheck timeout: `300`
 
 **Variables**
@@ -93,7 +106,7 @@ If health flaps during slow SIP startup, add on the **livekit-sip** service:
 
 ---
 
-## 6) When to delete and recreate the service
+## 7) When to delete and recreate the service
 
 Recreate only if:
 
@@ -110,7 +123,7 @@ Steps:
 
 ---
 
-## 7) Paste this if still failing
+## 8) Paste this if still failing
 
 Copy from Railway and paste in support / chat:
 
