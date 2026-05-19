@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 try:
     import yaml
 except ImportError as e:
-    print(f"[inject-config] ERROR: PyYAML required ({e)}")
+    print(f"[inject-config] ERROR: PyYAML required ({e})")
     sys.exit(1)
 
 OUT_PATH = Path(os.environ.get("SIP_CONFIG_FILE", "/tmp/sip-config.yaml"))
