@@ -25,4 +25,5 @@ export SIP_CONFIG_FILE="${CONFIG_PATH}"
 unset SIP_CONFIG_BODY
 
 log "Starting livekit-sip (SIP_CONFIG_FILE=${SIP_CONFIG_FILE}; Railway GET / on PORT=${PORT:-8080})"
-exec /bin/livekit-sip "$@"
+# Always pass our merged config file — ignore inherited Docker CMD (upstream defaults to /sip/config.yaml).
+exec /bin/livekit-sip --config="${SIP_CONFIG_FILE}"

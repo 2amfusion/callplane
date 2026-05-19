@@ -78,6 +78,10 @@ def load_body() -> dict[str, Any]:
     if not raw.strip():
         fail("SIP_CONFIG_BODY is empty. Paste multiline YAML in Railway Variables.")
     raw = raw.replace("\r", "")
+    # Railway CLI / single-line pastes sometimes store literal backslash-n instead of newlines.
+    if "\\n" in raw and raw.count("\n") < 3:
+        log("WARN: SIP_CONFIG_BODY looks like a single line with \\n — converting to newlines")
+        raw = raw.replace("\\n", "\n")
     if PLACEHOLDER_RE.search(raw):
         fail("SIP_CONFIG_BODY still contains YOUR_* placeholders.")
     try:
@@ -99,6 +103,12 @@ def apply_env_overrides(cfg: dict[str, Any]) -> None:
 
 
 def validate(cfg: dict[str, Any]) -> None:
+    if "keys" in cfg and not cfg.get("api_key"):
+        fail(
+            "SIP_CONFIG_BODY has keys: (livekit-callplane format) but livekit/sip needs "
+            "api_key and api_secret at the top level — see config/railway-sip-minimal.yaml",
+            cfg,
+        )
     if not cfg.get("api_key"):
         fail("missing api_key (set in YAML or LIVEKIT_API_KEY)", cfg)
     if not cfg.get("api_secret"):

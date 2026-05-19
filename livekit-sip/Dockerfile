@@ -20,7 +20,9 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /inject-config.py /docker-entrypoint.sh
 
 # Config via SIP_CONFIG_BODY → inject-config.py → SIP_CONFIG_FILE (see README.md).
+# Clear upstream livekit-sip --config=/sip/config.yaml from inherited CMD.
 ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD []
 
 # Railway / local: health on $PORT after Redis + SIP ready ("service ready" in logs).
 HEALTHCHECK --interval=15s --timeout=5s --start-period=180s --retries=5 \

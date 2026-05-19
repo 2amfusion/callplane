@@ -49,4 +49,4 @@ auth → telephony → assistants → billing
 - Do **not** commit secrets; `config/railway-dev.yaml` is placeholders only; `config/.gitignore` blocks `*-local.yaml` / `*-secrets.yaml`
 - Do not put Stripe, Postgres, or telephony creds in LiveKit config
 - Health: `GET /` → `200 OK` when node stats are fresh; may 406 briefly during startup
-- SIP Railway: health is real livekit/sip on `$PORT` — grep `service ready` then `curl $PORT/` → 200; connection refused = crash before health (Redis/STUN/YAML)
+- SIP Railway: health is real livekit/sip on `$PORT` — grep `service ready` then `curl $PORT/` → 200; connection refused = crash before health (Redis/STUN/YAML). Do **not** set Railway `startCommand` on livekit-sip (duplicates ENTRYPOINT → livekit-sip gets wrong argv). Do **not** paste SFU `keys:` YAML — SIP needs `api_key` / `api_secret`.

@@ -158,6 +158,8 @@ Railway fails if **`GET $PORT/`** never returns **200** within **300s**.
 | `invalid YAML` / inject-config error | Bad paste, tabs, smart quotes | Re-paste template; check deploy log for redacted config dump |
 | No logs at all | Wrong root directory or build failed | Root Directory = `livekit-sip` |
 | Health #1 instant fail, no `[docker-entrypoint]` | Parent `railway.toml` / wrong Dockerfile | Root Directory must be **`livekit-sip`** |
+| Instant fail, `livekit-sip` usage error in logs | `startCommand` set on this service | Remove it — use Dockerfile `ENTRYPOINT` only |
+| `keys:` in YAML but no `api_key` | Pasted **LIVEKIT_CONFIG** into **SIP_CONFIG_BODY** | Use `api_key` / `api_secret` (see §3 template) |
 
 ### Field names (livekit/sip v1.3.0)
 
