@@ -2,6 +2,8 @@
 # Single Railway/Docker start path: health on $PORT first, then SIP entrypoint.
 set -e
 
+printf '[start.sh] pid=%s starting (PORT=%s)\n' "$$" "${PORT:-unset}" >&2
+
 PORT="${PORT:-8080}"
 export PORT
 

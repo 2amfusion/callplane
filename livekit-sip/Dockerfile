@@ -24,9 +24,8 @@ RUN chmod +x /inject-config.py /health-wrapper.py /health-wrapper.sh /docker-ent
 
 # Config via SIP_CONFIG_BODY → inject-config.py → SIP_CONFIG_FILE (see README.md).
 # start.sh binds health-wrapper on $PORT, then execs docker-entrypoint.sh.
-# MUST clear upstream ENTRYPOINT [/livekit-sip] or Docker runs: livekit-sip /start.sh (health never binds).
-ENTRYPOINT []
-CMD ["/start.sh"]
+# MUST override upstream ENTRYPOINT [/livekit-sip] — empty CMD; do not set startCommand in Railway (see railway.json).
+ENTRYPOINT ["/start.sh"]
 
 # Railway probes $PORT via health-wrapper (immediate 200). livekit/sip health is internal.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
