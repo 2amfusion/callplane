@@ -2,8 +2,7 @@
 # Paste into Railway → livekit-sip service → Variables → SIP_CONFIG_BODY (multiline).
 # Replace YOUR_* placeholders. Use the SAME redis + api keys as livekit-callplane.
 #
-# Railway: health checks probe $PORT. docker-entrypoint.sh rewrites health_port to match
-# $PORT at start — you can omit health_port here or keep 8080 when PORT=8080 is set.
+# Railway probes $PORT via health-wrapper.sh (always 200). Entrypoint sets health_port → 8081.
 
 api_key: YOUR_KEY_ID
 api_secret: YOUR_KEY_SECRET
@@ -13,8 +12,8 @@ redis:
   address: YOUR_REDIS_HOST:6379
   password: YOUR_REDIS_PASSWORD
 
-# HTTP health — entrypoint syncs this to Railway $PORT at start (recommended PORT=8080).
-health_port: 8080
+# Optional — entrypoint sets health_port to SIP_INTERNAL_HEALTH_PORT (8081). Omit or leave commented.
+# health_port: 8081
 
 # SIP signaling (listen defaults to sip_port when sip_port_listen is omitted).
 sip_port: 5060

@@ -1,6 +1,7 @@
 # Railway config-as-code for livekit/sip (Callplane telephony bridge).
 # Create a NEW service in the same project, set Root Directory = livekit-sip
 # Docs: https://docs.railway.com/config-as-code
+# Duplicate disable in railway.json (healthcheckPath: null) — see DEPLOY-SIP.md.
 
 [build]
 builder = "DOCKERFILE"
@@ -8,16 +9,14 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 # Upstream reads inline YAML from env SIP_CONFIG_BODY (https://github.com/livekit/sip#config).
-# livekit/sip does NOT read Railway's PORT — only health_port in YAML. docker-entrypoint.sh
-# rewrites health_port to match $PORT before start.
+# Railway probes $PORT only. docker-entrypoint.sh starts health-wrapper.sh on $PORT (always 200)
+# before livekit-sip; sip health_port is internal (default 8081).
 #
 # Set service variable PORT=8080 (recommended). SIP signaling uses sip_port (5060) via TCP Proxy.
 #
-# Health check DISABLED — must be explicit. Omitting healthcheckPath does NOT turn checks off;
-# Railway then uses the dashboard "Health Check Path" (often still "/"). Use empty string or
-# null in railway.json to override dashboard. Re-enable after logs show "service ready":
-#   healthcheckPath = "/"
-#   healthcheckTimeout = 300
-# When enabled: GET / on $PORT returns 200 + body "OK" (503 if not ready; 429 under CPU load).
-healthcheckPath = ""
+# Deploy health: GET / on $PORT. health-wrapper.sh returns 200 before livekit-sip starts, so this
+# passes even with sticky dashboard "/" or wrong parent railway.toml (if image is current).
+# To disable probing entirely: healthcheckPath = "" and railway.json healthcheckPath: null.
+healthcheckPath = "/"
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

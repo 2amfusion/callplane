@@ -1,6 +1,7 @@
 #!/bin/sh
-# Railway health checks probe $PORT. livekit/sip listens on health_port in YAML only
-# (it does not read PORT). Sync health_port → PORT before starting the binary.
+# Railway probes $PORT. livekit/sip only listens on health_port in YAML (not PORT).
+# 1) health-wrapper.sh binds $PORT immediately (always 200 OK).
+# 2) livekit/sip health_port is moved to SIP_INTERNAL_HEALTH_PORT (default 8081).
 set -e
 
 log() {
@@ -13,23 +14,48 @@ if [ -z "${SIP_CONFIG_BODY:-}" ]; then
   exit 1
 fi
 
-if [ -n "${PORT:-}" ]; then
-  # Normalize CRLF from pasted Railway variables (common copy/paste issue).
-  SIP_CONFIG_BODY=$(printf '%s' "$SIP_CONFIG_BODY" | tr -d '\r')
+# Normalize CRLF from pasted Railway variables (common copy/paste issue).
+SIP_CONFIG_BODY=$(printf '%s' "$SIP_CONFIG_BODY" | tr -d '\r')
 
-  if printf '%s\n' "$SIP_CONFIG_BODY" | grep -Eq '^[[:space:]]*health_port:[[:space:]]*'; then
-    SIP_CONFIG_BODY=$(printf '%s\n' "$SIP_CONFIG_BODY" | sed -E "s/^[[:space:]]*health_port:[[:space:]]*.*/health_port: ${PORT}/")
-    log "Set health_port to PORT=${PORT} (was present in SIP_CONFIG_BODY)"
-  else
-    SIP_CONFIG_BODY="health_port: ${PORT}
-${SIP_CONFIG_BODY}"
-    log "Prepended health_port: ${PORT} (was missing from SIP_CONFIG_BODY)"
-  fi
-  export SIP_CONFIG_BODY
-elif printf '%s\n' "$SIP_CONFIG_BODY" | grep -Eq '^[[:space:]]*health_port:[[:space:]]*'; then
-  log 'WARN: health_port is set but PORT is empty — Railway normally sets PORT; health checks may fail.'
+INTERNAL="${SIP_INTERNAL_HEALTH_PORT:-8081}"
+
+if printf '%s\n' "$SIP_CONFIG_BODY" | grep -Eq '^[[:space:]]*health_port:[[:space:]]*'; then
+  SIP_CONFIG_BODY=$(printf '%s\n' "$SIP_CONFIG_BODY" | sed -E "s/^[[:space:]]*health_port:[[:space:]]*.*/health_port: ${INTERNAL}/")
+  log "Set health_port to internal ${INTERNAL} (livekit/sip monitor; Railway uses wrapper on PORT)"
 else
-  log 'WARN: No PORT and no health_port — HTTP health will not listen; Railway deploy health will fail.'
+  SIP_CONFIG_BODY="health_port: ${INTERNAL}
+${SIP_CONFIG_BODY}"
+  log "Prepended health_port: ${INTERNAL} (livekit/sip monitor)"
+fi
+export SIP_CONFIG_BODY
+
+if [ -z "${PORT:-}" ]; then
+  PORT=8080
+  export PORT
+  log 'WARN: PORT unset — defaulting health wrapper to 8080'
+fi
+
+/health-wrapper.sh &
+WRAPPER_PID=$!
+log "Started health wrapper on PORT=${PORT} (pid ${WRAPPER_PID})"
+
+# Block until wrapper answers (Railway may probe $PORT during sip startup).
+i=0
+while [ "$i" -lt 50 ]; do
+  if ! kill -0 "$WRAPPER_PID" 2>/dev/null; then
+    log 'ERROR: health wrapper exited before binding — check python3 in image'
+    exit 1
+  fi
+  if wget -q -O /dev/null "http://127.0.0.1:${PORT}/" 2>/dev/null; then
+    log "Health wrapper ready on PORT=${PORT}"
+    break
+  fi
+  i=$((i + 1))
+  sleep 0.1
+done
+if [ "$i" -ge 50 ]; then
+  log "ERROR: health wrapper did not respond on PORT=${PORT} within 5s"
+  exit 1
 fi
 
 # Upstream image ENTRYPOINT is livekit-sip --config=/sip/config.yaml; we rely on SIP_CONFIG_BODY env.

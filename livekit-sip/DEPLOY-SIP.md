@@ -6,19 +6,48 @@ SIP bridge root: **`livekit-sip/`** (not repo root).
 
 ---
 
-## Stop healthcheck probing NOW (no git push required)
+## Health fix (2026): wrapper on `$PORT` + disable probing
 
-Do these in the Railway dashboard for the **livekit-sip** service (order matters):
+**What we ship now**
 
-1. **Settings → Source → Root Directory** must be **`livekit-sip`** (not repo root). If it is wrong, Railway may use the parent **`livekit-callplane/railway.toml`**, which sets **`healthcheckPath = "/"`** for the SFU — and your SIP deploy will keep probing `/` on `$PORT`.
-2. **Settings → Deploy** (or **Settings → Health Check**, depending on UI version) → **Health Check Path** → **clear the field completely** (empty, not `/`) → **Save**.
-3. **Variables → `PORT`** → set **`8080`** (so when you re-enable health later, probe port matches `health_port`).
-4. **Deployments** → cancel/remove the stuck deploy if it is still **Building** / **Healthcheck**, then **Redeploy** after step 2 (a restart alone may keep the old health path).
-5. On the **new** deployment’s **Details** page, confirm **Health Check Path** is empty and the config source icon (if any) points at **`livekit-sip/railway.toml`** with `healthcheckPath = ""` — not the repo-root `railway.toml`.
+| Layer | Port | Role |
+|-------|------|------|
+| **`health-wrapper.sh`** | Railway **`$PORT`** (set **`8080`**) | Starts **before** `livekit-sip`; **`GET /` → 200** + `OK` always |
+| **`livekit/sip`** | **`8081`** (`SIP_INTERNAL_HEALTH_PORT`) | Real process health (503 until ready); Railway does **not** probe this |
 
-**Why removing `healthcheckPath` from git alone did not help:** Railway only disables HTTP deploy health checks when the path is **unset/empty/null**. **Omitting** the key in `railway.toml` does **not** clear a path already saved in the dashboard — dashboard values apply for keys missing from config-as-code. Config-as-code **overrides** the dashboard only when the key **is present** in the file (e.g. `healthcheckPath = ""`).
+So deploy health can pass even if SIP is still starting, and **even if Railway keeps probing** because of a wrong root directory or sticky dashboard path.
 
-There is **no** `healthcheckDisabled` flag in [`railway.schema.json`](https://railway.com/railway.schema.json) — only `healthcheckPath` (`string | null`) and `healthcheckTimeout`. Railway does **not** probe `$PORT` when no health path is configured; probing requires an explicit path (dashboard or toml/json).
+**Config-as-code (both files in `livekit-sip/`):**
+
+| File | Default (2026) | To disable probing |
+|------|----------------|-------------------|
+| `railway.toml` | `healthcheckPath = "/"` + `healthcheckTimeout = 300` | `healthcheckPath = ""` |
+| `railway.json` | `"healthcheckPath": "/"` | `"healthcheckPath": null` |
+
+Per [`railway.schema.json`](https://railway.com/railway.schema.json), `healthcheckPath` is `string | null`. **Empty string** (TOML) and **`null`** (JSON) mean “no path”. **Omitting** the key does **not** clear a sticky dashboard `/` — you must set `""` or `null` in config-as-code, or clear the dashboard field.
+
+There is **no** `healthcheckDisabled` flag. **Default is `"/"`** because many projects cannot clear dashboard probing; **`health-wrapper.sh` always returns 200 on `$PORT`** so deploy health passes even while SIP is still starting.
+
+### Stop healthcheck probing NOW (dashboard)
+
+Do these on the **livekit-sip** service (not **livekit-callplane** SFU):
+
+| Step | Where | Action |
+|------|--------|--------|
+| 1 | **Settings → Source** | **Root Directory** = `livekit-sip` → **Save** |
+| 2 | **Settings → Deploy** (or **Health Check**) | **Health Check Path** → **clear completely** (blank, not `/`) → **Save** |
+| 3 | **Variables** | **`PORT`** = `8080` |
+| 4 | **Deployments** | Cancel stuck **Healthcheck** deploy if needed → **Redeploy** after git push with wrapper image |
+| 5 | Latest deploy → **Details** | Config source = `livekit-sip/railway.toml` or `railway.json`; path empty **or** probing `/` is OK (wrapper still returns 200) |
+
+### Wrong service / cloned service (common)
+
+| Mistake | Symptom | Fix |
+|---------|---------|-----|
+| Root Directory = **repo root** | Uses parent `livekit-callplane/railway.toml` → `healthcheckPath = "/"` for SFU | Set Root Directory = **`livekit-sip`** |
+| Editing **livekit-callplane** (SFU) instead of **livekit-sip** | Variables/`PORT`/health path don’t match SIP Dockerfile | Open the **third** service whose root is `livekit-sip` |
+| **Duplicate** GitHub service (clone) still on old commit | No `[health-wrapper]` in logs | Delete duplicate or point it at `livekit-sip` + latest branch; redeploy |
+| Service display name ≠ folder | Confusing but OK if Root Directory is `livekit-sip` | Trust **Root Directory** + **Details → config file path**, not the service title |
 
 ---
 
@@ -27,7 +56,7 @@ There is **no** `healthcheckDisabled` flag in [`railway.schema.json`](https://ra
 1. Open the **same Railway project** as **livekit-callplane** and **Redis**.
 2. **New** → **GitHub** → select the **`livekit-callplane`** repo.
 3. **Settings → Root Directory:** `livekit-sip` (exactly).
-4. Confirm **Config-as-code** picks up `livekit-sip/railway.toml`.
+4. Confirm **Config-as-code** picks up `livekit-sip/railway.toml` and/or `livekit-sip/railway.json`.
 
 ---
 
@@ -35,7 +64,8 @@ There is **no** `healthcheckDisabled` flag in [`railway.schema.json`](https://ra
 
 | Variable | Value / action |
 |----------|----------------|
-| **`PORT`** | **`8080`** (recommended). Railway health checks always hit `$PORT`. **`livekit/sip` ignores `PORT`** and only listens on **`health_port`** in YAML — our **`docker-entrypoint.sh`** rewrites `health_port` to match `$PORT` at container start. Without redeploying that wrapper, you must set **`PORT=8080`** and the same value as **`health_port`** manually. |
+| **`PORT`** | **`8080`** (required for stable probes). Railway always hits **`$PORT`**. Our **`health-wrapper.sh`** binds here and returns **200** immediately; **`livekit/sip`** does not use `PORT` (internal **`health_port`** → **8081** via entrypoint). |
+| **`SIP_INTERNAL_HEALTH_PORT`** | Optional; default **`8081`**. livekit/sip HTTP monitor only — not probed by Railway. |
 | **`SIP_CONFIG_BODY`** | Multiline YAML — use the template in **§3** (replace placeholders). Official upstream name is **`SIP_CONFIG_BODY`** ([livekit/sip README](https://github.com/livekit/sip/blob/main/README.md)); the image reads it from the environment — **no** custom `startCommand` is required. |
 
 Optional split (still need `redis` in YAML):
@@ -48,9 +78,7 @@ Optional split (still need `redis` in YAML):
 ## 3) `SIP_CONFIG_BODY` template (copy → paste → replace `YOUR_*`)
 
 ```yaml
-# health_port is rewritten to Railway $PORT by docker-entrypoint.sh (set PORT=8080 recommended).
-health_port: 8080
-
+# Do not set health_port: 8080 — conflicts with wrapper on $PORT. Entrypoint uses 8081 internally.
 api_key: YOUR_KEY_ID
 api_secret: YOUR_KEY_SECRET
 ws_url: wss://callplane-production.up.railway.app
@@ -160,28 +188,28 @@ Docs: [Telnyx + LiveKit](https://docs.livekit.io/telephony/start/providers/telny
 ## Verify
 
 - Deploy logs: SIP listening on **5060**, Redis connected, WebSocket to **callplane-production** OK.
-- Health: Railway gets **200** on **`/`** with body **`OK`** (because **`health_port`** matches **`$PORT`**).
+- Health: **`curl http://$PORT/`** → **200** + `OK` from **`health-wrapper`** (logs: `[health-wrapper] Listening on 0.0.0.0:8080`).
 - From laptop: `nc -vz <tcp-proxy-host> <tcp-proxy-port>` succeeds.
 
 ---
 
 ## 9) Health check failed — troubleshooting
 
-**Default (2026):** `livekit-sip/railway.toml` sets **`healthcheckPath = ""`** so deploy health checks are **off** even if the dashboard still has `/`. Re-enable only after logs show **`service ready`**.
+**Default (2026):** `health-wrapper.sh` on **`$PORT`** + `healthcheckPath = "/"` in `railway.toml` / `railway.json`. Probing **`GET $PORT/`** returns **200** before SIP starts. To turn off Railway HTTP probes, set `healthcheckPath = ""` / `null` instead.
 
-When `healthcheckPath = "/"` is enabled, Railway marks the deploy failed when **`GET $PORT/`** never returns **200** within the timeout (`healthcheckTimeout` in `railway.toml`, or `RAILWAY_HEALTHCHECK_TIMEOUT_SEC`).
+When `healthcheckPath = "/"` is enabled, Railway fails the deploy if **`GET $PORT/`** never returns **200** within the timeout. With the wrapper image, that should succeed unless **`PORT`** is wrong or the wrapper did not start.
 
-### How livekit/sip health works (v1.3.0)
+### How health works (v1.3.0 + our wrapper)
 
 | Topic | Behavior |
 |-------|----------|
-| **Config env** | **`SIP_CONFIG_BODY`** (multiline YAML) or **`SIP_CONFIG_FILE`** — official upstream names |
-| **`PORT` env** | **Not read** by livekit/sip — only **`health_port`** in YAML opens the HTTP listener |
-| **Health server** | Starts only when **`health_port > 0`** — listens on **`0.0.0.0:health_port`** |
-| **`GET /`** | **200** + body **`OK`** when healthy; **503** if not started / shutting down; **429** if under CPU load |
-| **Startup order** | Parse YAML → connect **Redis** (fail = exit) → SIP + STUN if `use_external_ip` (fail = exit) → bind health HTTP in `svc.Run()` |
+| **Railway probe** | **`$PORT`** only (set **`8080`**) → **`health-wrapper.sh`** → always **200** + `OK` |
+| **livekit/sip `health_port`** | Rewritten to **`8081`** (or `SIP_INTERNAL_HEALTH_PORT`) — **not** Railway’s `$PORT` |
+| **`PORT` env** | **Not read** by livekit/sip |
+| **SIP `GET /` on 8081** | **200** when ready; **503** / **429** per upstream — use for debugging, not Railway |
+| **Startup order** | Wrapper starts → YAML parse → Redis → SIP/STUN → SIP health on 8081 in `svc.Run()` |
 
-Our **`docker-entrypoint.sh`** injects/overwrites **`health_port:`** from Railway’s **`$PORT`** before the binary starts — redeploy after pulling this fix if health failed with “service unavailable” and logs showed SIP running on 8080 but Railway probed a different port.
+Deploy logs should show **`[health-wrapper] Listening`** then **`[docker-entrypoint] Started health wrapper`** before Redis/SIP lines.
 
 ### Disable health check — dashboard (screenshot-level)
 
@@ -228,7 +256,7 @@ Or `railway.json` (there is **no** `healthcheckDisabled` in the schema):
    - `ws_url: wss://callplane-production.up.railway.app`
    - `redis.address` — private hostname (`*.railway.internal`), **not** `localhost`
    - `redis.password` — quote if it contains `:` or `#`
-   - **`health_port: 8080`** (optional if entrypoint wrapper is deployed)
+   - **Do not** set **`health_port: 8080`** (conflicts with wrapper; entrypoint uses **8081**)
    - **Do not** set **`use_external_ip: true`** and **`nat_1_to_1_ip`** together (process exits on config error)
 5. **Redeploy** after steps 1–4; read **Deploy logs** until `service ready`.
 6. **Still probing after clear + redeploy?** Push/pull `healthcheckPath = ""` in `livekit-sip/railway.toml` and redeploy; on deployment **Details**, confirm the path is empty and config source is `livekit-sip/railway.toml`.
@@ -239,7 +267,8 @@ In Railway → **livekit-sip** → **Deployments** → latest → **View logs**,
 
 | Pattern | If found |
 |---------|----------|
-| `[docker-entrypoint] Set health_port` or `Prepended health_port` | Entrypoint ran; probe port should match `$PORT` |
+| `[health-wrapper] Listening` | Wrapper bound `$PORT` — Railway probe should get 200 |
+| `[docker-entrypoint] Set health_port` / `Started health wrapper` | Entrypoint ran; sip on 8081, wrapper on `$PORT` |
 | `SIP_CONFIG_BODY is empty` | Variable missing, wrong name, or not multiline YAML |
 | `SIP_CONFIG_BODY or SIP_CONFIG_FILE is required` | Upstream binary started without config (should not happen with our entrypoint) |
 | `could not parse config` | Fix YAML indentation / quoting |
@@ -260,7 +289,8 @@ In Railway → **livekit-sip** → **Deployments** → latest → **View logs**,
 | `redis configuration is required` | Missing `redis:` block | Add `redis.address` + `password` |
 | Redis connection refused / timeout | Wrong host or password | Copy from SFU service; use `*.railway.internal` |
 | Process exits before `sip service ready` | API keys / ws_url / SIP bind error | Fix keys; check `ws_url` is `wss://…` not `https://` |
-| `sip service ready` / `service ready` but health fails | **`PORT` ≠ `health_port`** (pre-entrypoint image) | Set **`PORT=8080`**, redeploy with **`docker-entrypoint.sh`**, or match ports manually |
+| `service ready` but health fails | Old image (no wrapper) or **`PORT`** unset | Push latest `livekit-sip/`, set **`PORT=8080`**, grep `[health-wrapper]` in logs |
+| `Address already in use` on 8080 | **`health_port: 8080`** in YAML fights wrapper | Remove `health_port` from YAML; let entrypoint set **8081** |
 | No log lines at all | Build/start crash | Confirm Dockerfile build, root directory `livekit-sip` |
 
 ### Exact Railway variables (copy checklist)
@@ -287,9 +317,24 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/   # expect 200
 
 ---
 
-## 10) If health check STILL fails (after PORT + SIP_CONFIG_BODY)
+## 10) If health check STILL fails (nuclear options)
 
-Work through this list in order. Most failures are **process exit before HTTP**, not a wrong health path.
+Work through this list in order.
+
+### If STILL probing after `healthcheckPath=""` + redeploy
+
+1. **Confirm service:** Project → service whose **Settings → Source → Root Directory** = `livekit-sip` (not the SFU).
+2. **Deployment Details:** Config file path must be under `livekit-sip/` (`railway.toml` or `railway.json`). If it shows repo-root `railway.toml`, fix Root Directory and redeploy.
+3. **Push this repo** so the image includes `health-wrapper.sh` + `python3-minimal`. Logs must contain `[health-wrapper] Listening`.
+4. **Variables:** `PORT=8080`; remove `health_port: 8080` from `SIP_CONFIG_BODY` if present.
+5. **Dashboard:** Clear **Health Check Path** anyway → Save → **Redeploy** (not just Restart).
+6. **Nuclear A — new service:** **New** → same GitHub repo → Root Directory `livekit-sip` → copy variables from old service → delete old duplicate service.
+7. **Nuclear B — allow probing:** Leave path as `/` on dashboard; with wrapper, **`GET $PORT/`** should still return **200** once the new image is live.
+8. **Nuclear C — Railway support:** If Details shows probing but config-as-code has `null`/`""` and Root Directory is correct, attach deployment ID (platform bug / stale config).
+
+### If deploy fails for other reasons (not probing)
+
+Most failures are **process exit before SIP is useful**, not health path.
 
 ### A. Confirm deploy surface
 
@@ -313,7 +358,6 @@ ws_url: wss://callplane-production.up.railway.app
 redis:
   address: YOUR_REDIS_HOST:6379
   password: YOUR_REDIS_PASSWORD
-health_port: 8080
 sip_port: 5060
 rtp_port: 10000-10100
 use_external_ip: false
@@ -321,7 +365,7 @@ logging:
   level: info
 ```
 
-Set **`PORT=8080`**. Entrypoint overwrites `health_port` to match `$PORT` if present.
+Set **`PORT=8080`**. Do **not** add `health_port: 8080` (entrypoint sets internal **8081**).
 
 ### C. Field names (verified vs livekit/sip v1.3.0)
 
@@ -331,7 +375,7 @@ Set **`PORT=8080`**. Entrypoint overwrites `health_port` to match `$PORT` if pre
 | `api_secret` | Yes | Or env `LIVEKIT_API_SECRET` |
 | `ws_url` | Yes | Must be `wss://…` for production SFU |
 | `redis.address` / `password` | Yes | Use `*.railway.internal`, not `localhost` |
-| `health_port` | Yes | Synced from `$PORT` by entrypoint |
+| `health_port` | Optional | Entrypoint sets **8081**; omit or avoid **8080** |
 | `log_level` (root) | Legacy | Prefer `logging: level: info` |
 
 `SIP_CONFIG_FILE` works on VPS/volumes; on Railway use **`SIP_CONFIG_BODY`** only.
@@ -340,12 +384,13 @@ Set **`PORT=8080`**. Entrypoint overwrites `health_port` to match `$PORT` if pre
 
 | Strategy | When |
 |----------|------|
-| **`healthcheckPath = ""`** in `livekit-sip/railway.toml` (current default) | Debugging; overrides dashboard `/` |
-| **Dashboard path cleared** + redeploy | Immediate fix without git push |
-| **`healthcheckPath = "/"`** + `PORT=8080` | After logs prove process stays up |
+| **`health-wrapper` on `$PORT`** (current default) | Probing always passes on `$PORT`; SIP can still exit on Redis/STUN |
+| **`healthcheckPath = "/"`** + wrapper (default) | Deploy health passes; wrapper returns 200 even while SIP starts |
+| **`healthcheckPath = ""`** + **`railway.json` null** | Turn off Railway HTTP probes entirely |
+| **Dashboard path cleared** + redeploy | No git; may still probe until config-as-code deploy |
 | **Omitting `healthcheckPath` from toml** | Does **not** disable checks — dashboard path still applies |
 
-**503 on `/`** means HTTP is up but monitor not ready (rare after `service ready`). **Connection refused** means wrong port or crash before `svc.Run()`.
+**503 on `$PORT/`** should not happen with the wrapper (always 200). **503 on `:8081/`** means SIP monitor not ready. **Connection refused on `$PORT`** means wrapper failed to start (check build logs, `python3`, port conflict).
 
 ### E. Re-enable Railway health check (optional)
 

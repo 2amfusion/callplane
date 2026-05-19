@@ -1,6 +1,6 @@
 # Minimal SIP_CONFIG_BODY for Railway — isolate config vs STUN/NAT issues.
 # Replace YOUR_* only. Paste as one multiline variable (no surrounding quotes).
-# Set PORT=8080 on the service. docker-entrypoint.sh aligns health_port to PORT.
+# Set PORT=8080 on the service. Entrypoint runs health-wrapper on PORT; sip health_port → 8081.
 
 api_key: YOUR_KEY_ID
 api_secret: YOUR_KEY_SECRET
@@ -10,7 +10,8 @@ redis:
   address: YOUR_REDIS_HOST:6379
   password: YOUR_REDIS_PASSWORD
 
-health_port: 8080
+# Optional — entrypoint sets health_port to 8081 (internal). Do not set 8080 (conflicts with wrapper).
+# health_port: 8081
 sip_port: 5060
 rtp_port: 10000-10100
 

@@ -33,7 +33,7 @@ Upstream supports either:
 2. **`SIP_CONFIG_FILE`** — path to a mounted file (not typical on Railway).
 3. **Env overrides** for core LiveKit fields: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_WS_URL` (still need `redis:` in YAML).
 
-**Railway health:** `livekit/sip` listens on **`health_port`** in YAML only — it does **not** read Railway’s **`PORT`**. Our **`docker-entrypoint.sh`** rewrites `health_port` to match **`$PORT`** at start. Set **`PORT=8080`** in the dashboard for a stable probe port.
+**Railway health:** **`health-wrapper.sh`** binds **`$PORT`** (set **`8080`**) and returns **200** before SIP starts. **`livekit/sip`** uses internal **`health_port` 8081** (not `$PORT`). See [`DEPLOY-SIP.md`](DEPLOY-SIP.md).
 
 Official reference: [livekit/sip README](https://github.com/livekit/sip/blob/main/README.md), [docker-compose.yaml](https://github.com/livekit/sip/blob/main/docker-compose.yaml).
 
@@ -56,7 +56,7 @@ If calls connect but are silent/no audio → RTP is not reaching the container. 
 ## Deploy steps (Railway)
 
 **Copy-paste checklist for the current Railway setup:** [`DEPLOY-SIP.md`](DEPLOY-SIP.md)  
-Health failures: see **§9** in [`DEPLOY-SIP.md`](DEPLOY-SIP.md). Set **`PORT=8080`**; entrypoint syncs **`health_port`** automatically.
+Health failures: see **§9–10** in [`DEPLOY-SIP.md`](DEPLOY-SIP.md). Set **`PORT=8080`**; grep logs for **`[health-wrapper]`**.
 
 ### 1. Create the service
 
@@ -69,7 +69,7 @@ Health failures: see **§9** in [`DEPLOY-SIP.md`](DEPLOY-SIP.md). Set **`PORT=80
 
 | Variable | Purpose |
 |----------|---------|
-| **`PORT`** | **`8080`** (recommended). Railway probes `$PORT` for health; entrypoint aligns YAML **`health_port`**. |
+| **`PORT`** | **`8080`**. Railway probes `$PORT` → **`health-wrapper`** (always 200). SIP monitor on **8081**. |
 | **`SIP_CONFIG_BODY`** | Full multiline YAML (see template). Upstream reads this env var by name — no `startCommand` override needed. |
 
 **Option A — `SIP_CONFIG_BODY` (recommended)**
@@ -104,7 +104,7 @@ Summary:
 1. **Do not** rely on “Generate Domain” HTTPS for SIP — that is HTTP only.
 2. Add **TCP Proxy** → application port **5060** (SIP signaling over TCP).
 3. Optional second TCP Proxy → **5061** if you enable `tls:` in config.
-4. **Health:** `PORT=8080`; entrypoint syncs `health_port`. `railway.toml` sets `healthcheckPath = ""` by default — enable `/` after logs show `service ready`.
+4. **Health:** `PORT=8080`; wrapper on `$PORT` (always 200). Default `healthcheckPath = "/"` — set `""`/`null` in toml/json to disable probing.
 5. **No UDP UI** — you cannot map `10000-20000/udp` like Docker `-p`. Document for future Railway UDP support.
 
 ### 4. Advertised IP / hostname
@@ -136,7 +136,7 @@ Use **global** `lk` flags before `sip` (`--url`, `--api-key`, `--api-secret` —
 ### 6. Deploy and verify
 
 1. Deploy logs: `livekit-sip` connected to Redis, listening on 5060.
-2. Health check **200** on `/` — requires **`PORT=8080`** (Railway) matching **`health_port: 8080`** in YAML.
+2. Health check **200** on `/` at **`$PORT`** — **`curl`** wrapper (`health-wrapper`); SIP ready is separate (`service ready` in logs).
 3. From outside Railway: `nc -vz shuttle.proxy.rlwy.net <tcp-proxy-port>` (SIP TCP).
 4. Place test call via Telnyx — if signaling OK but no audio, RTP/UDP is the blocker.
 
@@ -184,9 +184,10 @@ docker run --rm --network host \
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | `FROM livekit/sip:v1.3.0` + PORT/health_port entrypoint |
-| `docker-entrypoint.sh` | Rewrites `health_port` in `SIP_CONFIG_BODY` to match Railway `$PORT` |
-| `railway.toml` | Build; `healthcheckPath = ""` by default (see DEPLOY-SIP.md) |
+| `Dockerfile` | `FROM livekit/sip:v1.3.0` + `python3-minimal` + wrapper |
+| `health-wrapper.sh` | HTTP **200** on Railway `$PORT` before SIP starts |
+| `docker-entrypoint.sh` | Wrapper on `$PORT`; `health_port` → 8081 for livekit/sip |
+| `railway.toml` / `railway.json` | Build; disable probing (`""` / `null`) — see DEPLOY-SIP.md |
 | `config/railway-sip.yaml` | Full `SIP_CONFIG_BODY` template |
 | `config/railway-sip-minimal.yaml` | Minimal config (no STUN) for debugging |
 | `DEPLOY-SIP.md` | Railway checklist (PORT, TCP proxy, Telnyx, `lk` commands) |
