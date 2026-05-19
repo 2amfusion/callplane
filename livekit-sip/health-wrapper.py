@@ -14,10 +14,10 @@ def port_from_env() -> int:
     try:
         port = int(raw)
     except ValueError:
-        print(f"[health-wrapper] ERROR: PORT must be an integer (got {raw!r})", file=sys.stderr)
+        print(f"[health-wrapper] ERROR: PORT must be an integer (got {raw!r})")
         sys.exit(1)
     if port < 1 or port > 65535:
-        print(f"[health-wrapper] ERROR: PORT out of range (got {port})", file=sys.stderr)
+        print(f"[health-wrapper] ERROR: PORT out of range (got {port})")
         sys.exit(1)
     return port
 
@@ -49,8 +49,8 @@ class ReuseTCPServer(socketserver.TCPServer):
 
 def main() -> None:
     port = port_from_env()
-    print(f"[health-wrapper] starting", file=sys.stderr)
-    print(f"[health-wrapper] PORT={port} (from env)", file=sys.stderr)
+    print(f"[health-wrapper] starting")
+    print(f"[health-wrapper] PORT={port} (from env)")
 
     try:
         httpd = ReuseTCPServer(("0.0.0.0", port), HealthHandler)
@@ -58,14 +58,13 @@ def main() -> None:
         if exc.errno in (socket.EADDRINUSE, 98):
             print(
                 f"[health-wrapper] PORT={port} already bound — assuming another wrapper is running",
-                file=sys.stderr,
             )
             return
-        print(f"[health-wrapper] ERROR: bind failed on 0.0.0.0:{port}: {exc}", file=sys.stderr)
+        print(f"[health-wrapper] ERROR: bind failed on 0.0.0.0:{port}: {exc}")
         sys.exit(1)
 
     with httpd:
-        print(f"[health-wrapper] Listening on 0.0.0.0:{port} (Railway probe target)", file=sys.stderr)
+        print(f"[health-wrapper] Listening on 0.0.0.0:{port} (Railway probe target)")
         httpd.serve_forever()
 
 
