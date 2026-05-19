@@ -13,6 +13,7 @@ Separate **Python worker** from LiveKit Server. Phone calls: **Telnyx → liveki
 | `ELEVEN_API_KEY` | ElevenLabs TTS. |
 | `BITE_BUDDY_WS_URL` | Base WebSocket URL, e.g. `wss://api.bitebuddy.ai/ai/chat/ws/completions` (no trailing `/{call_id}`). |
 | `AGENT_NAME` | Worker registration name; default `callplane-voice`. Must match SIP dispatch `roomConfig.agents[].agentName`. |
+| `AGENT_HTTP_PORT` | Optional; default `8081`. LiveKit worker readiness HTTP (`GET /`). **Not** probed by Railway. |
 
 ## Local quick run
 
@@ -34,9 +35,32 @@ python agent.py dev
 ## Railway
 
 1. New service → same GitHub repo → **Root Directory** `callplane-agents`.
-2. Uses `callplane-agents/railway.toml` + `Dockerfile` (`python agent.py start`).
-3. Set all env vars above. Worker exposes `GET /` for Railway health (LiveKit agents HTTP server on `$PORT`).
+2. Uses `callplane-agents/railway.toml` + `Dockerfile` (`/app/start.sh`).
+3. Set all env vars above. **Do not set `PORT` manually** — Railway injects it.
 4. **Outbound only** to `LIVEKIT_URL` and `BITE_BUDDY_WS_URL` — no inbound UDP on this service.
+
+### Health check
+
+Railway probes **`GET $PORT/`** (path `/`, timeout 300s). The LiveKit agents worker does **not** bind Railway's `$PORT` by default — it uses **`AGENT_HTTP_PORT`** (8081) for worker readiness and may return **503** until connected to LiveKit.
+
+**`start.sh`** starts **`health-wrapper.py`** on **`$PORT`** first (immediate **200 OK**), then runs `python agent.py start`.
+
+Deploy logs should show:
+
+1. `[start.sh] Railway deploy starting … PORT=…`
+2. `[health-wrapper] Listening on …`
+3. `[start.sh] health-wrapper ready on PORT=…`
+4. `HTTP server listening on :8081` (agent worker)
+
+**Debug:** set `HEALTH_ONLY=1` on the service and redeploy. If health passes, the wrapper works — fix missing `LIVEKIT_*` / plugin keys next. Remove `HEALTH_ONLY` after.
+
+**Local smoke test:**
+
+```bash
+PORT=8080 python3 health-wrapper.py &
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/   # expect 200
+kill %1
+```
 
 ## SIP dispatch (after trunk exists)
 

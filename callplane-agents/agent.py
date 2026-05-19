@@ -45,6 +45,8 @@ logger = logging.getLogger("callplane-agents")
 load_dotenv()
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "callplane-voice")
+# LiveKit worker health HTTP (GET /) — not Railway's $PORT; see health-wrapper.py + start.sh.
+AGENT_HTTP_PORT = int(os.environ.get("AGENT_HTTP_PORT", "8081"))
 
 SIP_ATTR_TRUNK = "sip.trunkPhoneNumber"
 SIP_ATTR_CALLER = "sip.phoneNumber"
@@ -63,7 +65,7 @@ class CallplaneAgent(Agent):
     # BiteBuddy sends the first spoken message; do not greet from the agent scaffold.
 
 
-server = AgentServer()
+server = AgentServer(port=AGENT_HTTP_PORT)
 
 
 def prewarm(proc: JobProcess) -> None:
