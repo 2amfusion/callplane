@@ -1,6 +1,6 @@
 # Minimal SIP_CONFIG_BODY for Railway — isolate config vs STUN/NAT issues.
 # Replace YOUR_* only. Paste as one multiline variable (no surrounding quotes).
-# Set PORT=8080 on the service. health-wrapper uses PORT; livekit/sip health_port is 8081.
+# Railway injects PORT — do not set PORT manually. health-wrapper uses PORT; livekit/sip health_port is 8081.
 
 api_key: YOUR_KEY_ID
 api_secret: YOUR_KEY_SECRET

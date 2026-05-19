@@ -23,7 +23,7 @@ SIP bridge between **Telnyx** (PSTN) and **livekit-callplane** (WebRTC SFU). Thi
 | **5060** | UDP + TCP | SIP signaling (default) |
 | **5061** | TCP (TLS) | Optional SIP over TLS |
 | **10000–20000** (default) | **UDP** | RTP media (`rtp_port` in config; narrow in template) |
-| **8080** (`$PORT`) | HTTP | Railway health — `health-wrapper.sh` (immediate 200) |
+| **`$PORT`** (Railway-injected) | HTTP | Railway health — `health-wrapper.sh` (immediate 200) |
 | **8081** | HTTP | livekit/sip real health (`SIP_INTERNAL_HEALTH_PORT`) |
 
 ### Config delivery
@@ -32,7 +32,7 @@ SIP bridge between **Telnyx** (PSTN) and **livekit-callplane** (WebRTC SFU). Thi
 2. **`SIP_CONFIG_FILE`** — path to a mounted file (not typical on Railway).
 3. **Env overrides:** `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_WS_URL` (still need `redis:` in YAML).
 
-**Railway health:** Set **`PORT=8080`**. Wrapper returns **200** on `GET /` immediately; livekit/sip readiness is on **8081** after `service ready`. See [`DEPLOY-SIP.md`](DEPLOY-SIP.md).
+**Railway health:** Let Railway inject **`PORT`** (do not set `PORT` unless debugging). Wrapper returns **200** on `GET /` immediately; livekit/sip readiness is on **8081** after `service ready`. See [`DEPLOY-SIP.md`](DEPLOY-SIP.md).
 
 Official reference: [livekit/sip README](https://github.com/livekit/sip/blob/main/README.md).
 
@@ -55,7 +55,7 @@ Deploy and health checks can succeed; PSTN media may fail until inbound UDP exis
 **Full checklist:** [`DEPLOY-SIP.md`](DEPLOY-SIP.md)
 
 1. New service in same project; **Root Directory** = `livekit-sip`.
-2. Variables: **`PORT=8080`**, **`SIP_CONFIG_BODY`** (from [`config/railway-sip.yaml`](config/railway-sip.yaml) or minimal).
+2. Variables: **`SIP_CONFIG_BODY`** (from [`config/railway-sip.yaml`](config/railway-sip.yaml) or minimal). Do not set **`PORT`** unless Railway support asks — Railway injects it.
 3. TCP Proxy on container port **5060**.
 4. After healthy: `lk sip inbound create` / `dispatch create` against the SFU URL.
 
@@ -83,8 +83,8 @@ On macOS, use `host.docker.internal` in `redis.address` / `ws_url` if Redis/SFU 
 |------|---------|
 | `Dockerfile` | `FROM livekit/sip:v1.3.0` + entrypoint |
 | `docker-entrypoint.sh` | Runs `inject-config.py`, then `livekit-sip` with `SIP_CONFIG_FILE` |
-| `inject-config.py` | YAML validate, `health_port` from `$PORT`, writes `/tmp/sip-config.yaml` |
-| `railway.toml` / `railway.json` | Build + healthcheck; **`startCommand`: null** in JSON (Dockerfile ENTRYPOINT) |
+| `inject-config.py` | YAML validate, `health_port` → 8081, writes `/tmp/sip-config.yaml` |
+| `railway.json` | Build + healthcheck; **`"startCommand": null`** (Dockerfile ENTRYPOINT — never `""`) |
 | `config/railway-sip.yaml` | Full `SIP_CONFIG_BODY` template |
 | `config/railway-sip-minimal.yaml` | Minimal config (`use_external_ip: false`) |
 | `DEPLOY-SIP.md` | Railway deploy + troubleshooting |

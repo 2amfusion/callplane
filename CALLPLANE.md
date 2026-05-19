@@ -186,7 +186,7 @@ PSTN / Phone → Telnyx SIP trunk → livekit/sip (Railway) → Redis ↔ liveki
 | **livekit/sip** | `livekit-sip` | `livekit-sip/` | **TCP proxy** for SIP 5060 (and 5061 if TLS); health HTTP 8080 |
 | **Redis** | plugin / shared | — | private `redis.railway.internal` only |
 
-Deploy scaffolding: [`livekit-sip/`](livekit-sip/) (`Dockerfile`, `railway.toml`, `config/railway-sip.yaml`, README).
+Deploy scaffolding: [`livekit-sip/`](livekit-sip/) (`Dockerfile`, `railway.json`, `config/railway-sip.yaml`, README).
 
 **Your LiveKit URL:** `wss://callplane-production.up.railway.app` — set as `ws_url` / `LIVEKIT_WS_URL` on the SIP service (same API keys as the SFU `keys:` block).
 
@@ -205,7 +205,7 @@ Deploy scaffolding: [`livekit-sip/`](livekit-sip/) (`Dockerfile`, `railway.toml`
 
 1. Railway project already has **livekit-callplane** + **Redis**.
 2. **New service** → same GitHub repo → **Root Directory:** `livekit-sip`.
-3. **Variables:** `PORT=8080` (must match `health_port` in YAML — Railway health checks use `$PORT`) + multiline `SIP_CONFIG_BODY` from [`livekit-sip/config/railway-sip.yaml`](livekit-sip/config/railway-sip.yaml) (replace `YOUR_*`, same Redis as SFU). Step-by-step: [`livekit-sip/DEPLOY-SIP.md`](livekit-sip/DEPLOY-SIP.md).
+3. **Variables:** multiline `SIP_CONFIG_BODY` from [`livekit-sip/config/railway-sip.yaml`](livekit-sip/config/railway-sip.yaml) (replace `YOUR_*`, same Redis as SFU). Railway injects `PORT` for health — do not set `PORT` manually. Step-by-step: [`livekit-sip/DEPLOY-SIP.md`](livekit-sip/DEPLOY-SIP.md).
 4. **Networking:** add TCP proxies (below); do **not** point Telnyx at `callplane-production.up.railway.app` — that is WebSocket, not SIP.
 5. Create LiveKit **SIP inbound trunk** + **dispatch rule** (CLI/API) — [Telnyx provider doc](https://docs.livekit.io/telephony/start/providers/telnyx/).
 6. Configure Telnyx FQDN to the **SIP TCP proxy** host:port.
@@ -220,7 +220,7 @@ Use with **livekit-sip** service after Redis and **livekit-callplane** are healt
 2. **Variables → `PORT`:** `8080` — must equal `health_port` in `SIP_CONFIG_BODY` (Railway only probes `$PORT`).
 3. **Variables → `SIP_CONFIG_BODY`:** Full YAML; `ws_url: wss://callplane-production.up.railway.app`; `redis.address` = **private** Redis host; `api_key` / `api_secret` match SFU `keys:` map (`LIVEKIT_CONFIG` → `keys:`).
 4. **Variables (optional split):** `LIVEKIT_WS_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` instead of embedding in YAML — Redis block still required in `SIP_CONFIG_BODY`.
-5. **`health_port: 8080`** in YAML — same as `PORT`; `livekit-sip/railway.toml` health check is `GET /`.
+5. **Health:** `health-wrapper` on Railway `$PORT` (`GET /` → 200); livekit/sip `health_port` is **8081** (set by entrypoint). `livekit-sip/railway.json` has `"startCommand": null`.
 6. **Public networking → TCP Proxy #1:** application port **5060** → note `shuttle.proxy.rlwy.net:XXXXX` for Telnyx.
 7. **TCP Proxy #2 (optional):** application port **5061** if using `tls:` in config with certs mounted.
 8. **Do not expect a UDP section** — there is no Railway UI to open `5060/udp` or `10000-20000/udp` (unlike AWS security groups). Watch [Railway feedback](https://station.railway.com/feedback/adding-inbound-udp-fad19847) if you need this later.

@@ -10,7 +10,7 @@ SIP bridge root: **`livekit-sip/`** (not repo root).
 
 | Layer | Port | Role |
 |-------|------|------|
-| **`health-wrapper.sh`** | Railway **`$PORT`** (set **`8080`**) | Binds **before** livekit-sip; **`GET /` → 200** immediately |
+| **`health-wrapper.sh`** | Railway **`$PORT`** (injected) | Binds **before** livekit-sip; **`GET /` → 200** immediately |
 | **`livekit/sip`** | **`8081`** (`SIP_INTERNAL_HEALTH_PORT`) | Real SIP readiness (200 after `service ready` in logs) |
 
 Railway only probes **`$PORT`**. livekit/sip does **not** read `PORT`; the entrypoint sets `health_port` to the internal port so the wrapper can own `$PORT`.
@@ -39,7 +39,7 @@ Startup order: wrapper on `$PORT` → YAML/Redis → SIP (STUN if `use_external_
 
 | Mistake | Symptom | Fix |
 |---------|---------|-----|
-| Root Directory = **repo root** | Wrong `railway.toml`, wrong Dockerfile | Set Root Directory = **`livekit-sip`** |
+| Root Directory = **repo root** | Wrong config/Dockerfile (SFU image) | Set Root Directory = **`livekit-sip`** |
 | Editing **livekit-callplane** (SFU) instead of **livekit-sip** | Variables don't match SIP image | Open the SIP service whose root is `livekit-sip` |
 
 ---
@@ -48,7 +48,7 @@ Startup order: wrapper on `$PORT` → YAML/Redis → SIP (STUN if `use_external_
 
 | Variable | Value / action |
 |----------|----------------|
-| **`PORT`** | **`8080`** — Railway probes this (`health-wrapper` binds here) |
+| **`PORT`** | **Do not set manually** — Railway injects it; `health-wrapper` binds to that value. Only add `PORT=8080` if support asks you to pin it. |
 | **`SIP_CONFIG_BODY`** | Multiline YAML — use template in **§3** (replace `YOUR_*`) |
 | **`SIP_INTERNAL_HEALTH_PORT`** | Optional; default **`8081`** (livekit/sip monitor; not probed by Railway) |
 

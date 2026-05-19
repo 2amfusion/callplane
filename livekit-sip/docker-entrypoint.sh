@@ -53,4 +53,5 @@ export SIP_CONFIG_FILE="${CONFIG_PATH}"
 unset SIP_CONFIG_BODY
 
 log "Starting livekit-sip --config=${SIP_CONFIG_FILE} (internal health on ${SIP_INTERNAL_HEALTH_PORT:-8081})"
-exec /bin/livekit-sip --config="${SIP_CONFIG_FILE}"
+# Do not exec: keep this shell as PID 1 so the background health-wrapper stays alive.
+/bin/livekit-sip --config="${SIP_CONFIG_FILE}"
