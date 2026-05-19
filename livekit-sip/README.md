@@ -33,6 +33,8 @@ Upstream supports either:
 2. **`SIP_CONFIG_FILE`** — path to a mounted file (not typical on Railway).
 3. **Env overrides** for core LiveKit fields: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_WS_URL` (still need `redis:` in YAML).
 
+**Railway health:** `livekit/sip` listens on **`health_port`** in YAML only — it does **not** read Railway’s **`PORT`**. Our **`docker-entrypoint.sh`** rewrites `health_port` to match **`$PORT`** at start. Set **`PORT=8080`** in the dashboard for a stable probe port.
+
 Official reference: [livekit/sip README](https://github.com/livekit/sip/blob/main/README.md), [docker-compose.yaml](https://github.com/livekit/sip/blob/main/docker-compose.yaml).
 
 ---
@@ -54,7 +56,7 @@ If calls connect but are silent/no audio → RTP is not reaching the container. 
 ## Deploy steps (Railway)
 
 **Copy-paste checklist for the current Railway setup:** [`DEPLOY-SIP.md`](DEPLOY-SIP.md)  
-(**Important:** set service variable **`PORT=8080`** so it matches **`health_port`** in `SIP_CONFIG_BODY` — Railway’s health probe always uses `$PORT`.)
+Health failures: see **§9** in [`DEPLOY-SIP.md`](DEPLOY-SIP.md). Set **`PORT=8080`**; entrypoint syncs **`health_port`** automatically.
 
 ### 1. Create the service
 
@@ -67,7 +69,7 @@ If calls connect but are silent/no audio → RTP is not reaching the container. 
 
 | Variable | Purpose |
 |----------|---------|
-| **`PORT`** | **`8080`** (recommended) — must equal **`health_port`** in your YAML. Railway sends deploy health checks to `http://…:$PORT/` only. |
+| **`PORT`** | **`8080`** (recommended). Railway probes `$PORT` for health; entrypoint aligns YAML **`health_port`**. |
 | **`SIP_CONFIG_BODY`** | Full multiline YAML (see template). Upstream reads this env var by name — no `startCommand` override needed. |
 
 **Option A — `SIP_CONFIG_BODY` (recommended)**
@@ -182,7 +184,8 @@ docker run --rm --network host \
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | `FROM livekit/sip:v1.3.0` |
+| `Dockerfile` | `FROM livekit/sip:v1.3.0` + PORT/health_port entrypoint |
+| `docker-entrypoint.sh` | Rewrites `health_port` in `SIP_CONFIG_BODY` to match Railway `$PORT` |
 | `railway.toml` | Build + health check |
 | `config/railway-sip.yaml` | `SIP_CONFIG_BODY` template |
 | `DEPLOY-SIP.md` | Railway checklist (PORT, TCP proxy, Telnyx, `lk` commands) |

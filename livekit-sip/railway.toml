@@ -7,14 +7,16 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Upstream image reads inline YAML from env SIP_CONFIG_BODY (no CLI flag needed).
-# https://github.com/livekit/sip#config
+# Upstream reads inline YAML from env SIP_CONFIG_BODY (https://github.com/livekit/sip#config).
+# livekit/sip does NOT read Railway's PORT — only health_port in YAML. docker-entrypoint.sh
+# rewrites health_port to match $PORT before start (fixes #1 Railway health failure mode).
 #
-# Railway health checks always target $PORT. Set service variable PORT=8080 and the same
-# value as health_port inside SIP_CONFIG_BODY — otherwise GET / never hits the sip health server.
-# SIP signaling uses sip_port (5060) — expose that via TCP Proxy in the dashboard, not PORT.
+# Optional: set service variable PORT=8080 for a stable health port (recommended).
+# SIP signaling uses sip_port (5060) — expose via TCP Proxy in dashboard, not PORT.
 # Inbound UDP (5060/udp, RTP range) is NOT supported on Railway public edge as of 2026.
-# Omit startCommand — upstream ENTRYPOINT runs the sip binary with env vars.
+#
+# Debug failing deploys: comment out healthcheckPath below, redeploy, read logs, re-enable.
+# GET / returns 200 + body "OK" when healthy (503 if crashed or health_port unset pre-entrypoint).
 healthcheckPath = "/"
-healthcheckTimeout = 120
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

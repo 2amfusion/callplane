@@ -19,7 +19,7 @@ SIP bridge root: **`livekit-sip/`** (not repo root).
 
 | Variable | Value / action |
 |----------|----------------|
-| **`PORT`** | **`8080`** — Railway’s health check always hits `$PORT`. Your YAML must use the same port as **`health_port`** (below). If `PORT` and `health_port` differ, deploys fail with “service unavailable”. |
+| **`PORT`** | **`8080`** (recommended). Railway health checks always hit `$PORT`. **`livekit/sip` ignores `PORT`** and only listens on **`health_port`** in YAML — our **`docker-entrypoint.sh`** rewrites `health_port` to match `$PORT` at container start. Without redeploying that wrapper, you must set **`PORT=8080`** and the same value as **`health_port`** manually. |
 | **`SIP_CONFIG_BODY`** | Multiline YAML — use the template in **§3** (replace placeholders). Official upstream name is **`SIP_CONFIG_BODY`** ([livekit/sip README](https://github.com/livekit/sip/blob/main/README.md)); the image reads it from the environment — **no** custom `startCommand` is required. |
 
 Optional split (still need `redis` in YAML):
@@ -32,7 +32,7 @@ Optional split (still need `redis` in YAML):
 ## 3) `SIP_CONFIG_BODY` template (copy → paste → replace `YOUR_*`)
 
 ```yaml
-# Must match Railway variable PORT=8080 (Railway health check uses PORT).
+# health_port is rewritten to Railway $PORT by docker-entrypoint.sh (set PORT=8080 recommended).
 health_port: 8080
 
 api_key: YOUR_KEY_ID
@@ -142,5 +142,71 @@ Docs: [Telnyx + LiveKit](https://docs.livekit.io/telephony/start/providers/telny
 ## Verify
 
 - Deploy logs: SIP listening on **5060**, Redis connected, WebSocket to **callplane-production** OK.
-- Health: Railway gets **200** on **`/`** (because **`PORT`** = **`health_port`** = **8080**).
+- Health: Railway gets **200** on **`/`** with body **`OK`** (because **`health_port`** matches **`$PORT`**).
 - From laptop: `nc -vz <tcp-proxy-host> <tcp-proxy-port>` succeeds.
+
+---
+
+## 9) Health check failed — troubleshooting
+
+Railway marks the deploy failed when **`GET $PORT/`** never returns **200** within the timeout (`healthcheckTimeout = 300` in `railway.toml`, or `RAILWAY_HEALTHCHECK_TIMEOUT_SEC`).
+
+### How livekit/sip health works (v1.3.0)
+
+| Topic | Behavior |
+|-------|----------|
+| **Config env** | **`SIP_CONFIG_BODY`** (multiline YAML) or **`SIP_CONFIG_FILE`** — official upstream names |
+| **`PORT` env** | **Not read** by livekit/sip — only **`health_port`** in YAML opens the HTTP listener |
+| **Health server** | Starts only when **`health_port > 0`** — listens on **`0.0.0.0:health_port`** |
+| **`GET /`** | **200** + body **`OK`** when healthy; **503** if not started / shutting down; **429** if under CPU load |
+| **Startup order** | Parse YAML → connect **Redis** (fail = exit, no health port) → start SIP → bind health HTTP |
+
+Our **`docker-entrypoint.sh`** injects/overwrites **`health_port:`** from Railway’s **`$PORT`** before the binary starts — redeploy after pulling this fix if health failed with “service unavailable” and logs showed SIP running on 8080 but Railway probed a different port.
+
+### Immediate dashboard actions (do in order)
+
+1. **Variables → `PORT`:** set **`8080`** (stable, matches docs; entrypoint will align `health_port`).
+2. **Variables → `SIP_CONFIG_BODY`:** confirm multiline YAML — not empty, not JSON, placeholders replaced:
+   - `api_key` / `api_secret` — same as **livekit-callplane** `LIVEKIT_CONFIG` → `keys:`
+   - `ws_url: wss://callplane-production.up.railway.app`
+   - `redis.address` — private hostname (`*.railway.internal`), **not** `localhost`
+   - `redis.password` — quote if it contains `:` or `#`
+   - **`health_port: 8080`** (optional if entrypoint wrapper is deployed)
+   - **Do not** set **`use_external_ip: true`** and **`nat_1_to_1_ip`** together (process exits on config error)
+3. **Settings → Root Directory:** **`livekit-sip`**
+4. **Redeploy** after variable fixes.
+5. **Still failing?** Temporarily remove **`healthcheckPath`** from `livekit-sip/railway.toml` (or clear Health Check Path in dashboard), redeploy, read **Deploy logs** — re-enable once process stays up.
+
+### Deploy logs — what to look for
+
+| Log / error | Meaning | Fix |
+|-------------|---------|-----|
+| `could not parse config` / YAML error | Bad **`SIP_CONFIG_BODY`** | Fix indentation; quote special chars in passwords |
+| `use_external_ip and nat_1_to_1_ip can not both be set` | Conflicting NAT flags | Use one: `use_external_ip: true` **or** `nat_1_to_1_ip` + `use_external_ip: false` |
+| `redis configuration is required` | Missing `redis:` block | Add `redis.address` + `password` |
+| Redis connection refused / timeout | Wrong host or password | Copy from SFU service; use `*.railway.internal` |
+| Process exits before `sip service ready` | API keys / ws_url / SIP bind error | Fix keys; check `ws_url` is `wss://…` not `https://` |
+| `sip service ready` / `service ready` but health fails | **`PORT` ≠ `health_port`** (pre-entrypoint image) | Set **`PORT=8080`**, redeploy with **`docker-entrypoint.sh`**, or match ports manually |
+| No log lines at all | Build/start crash | Confirm Dockerfile build, root directory `livekit-sip` |
+
+### Exact Railway variables (copy checklist)
+
+| Variable | Example / source |
+|----------|------------------|
+| **`PORT`** | `8080` |
+| **`SIP_CONFIG_BODY`** | Full YAML from [`config/railway-sip.yaml`](config/railway-sip.yaml) with `YOUR_*` replaced |
+| *(optional)* **`RAILWAY_HEALTHCHECK_TIMEOUT_SEC`** | `300` — only if startup is slow (Redis cold start) |
+
+Do **not** set `LIVEKIT_CONFIG` on this service — that is for **livekit-callplane** only. SIP uses **`SIP_CONFIG_BODY`**.
+
+### Quick local sanity check
+
+```bash
+cd livekit-sip
+export PORT=8080
+export SIP_CONFIG_BODY="$(cat config/railway-sip.yaml)"   # after replacing YOUR_*
+docker build -t callplane-sip .
+docker run --rm -e PORT -e SIP_CONFIG_BODY -p 8080:8080 callplane-sip
+# another terminal:
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/   # expect 200
+```
