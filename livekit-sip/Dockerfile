@@ -21,7 +21,8 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /inject-config.py /health-wrapper.sh /docker-entrypoint.sh
 
 # Config via SIP_CONFIG_BODY → inject-config.py → SIP_CONFIG_FILE (see README.md).
-# Clear upstream livekit-sip --config=/sip/config.yaml from inherited CMD.
+# Railway: railway.json startCommand starts health-wrapper on $PORT, then entrypoint.
+# Local docker run: ENTRYPOINT alone starts wrapper inside docker-entrypoint.sh.
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD []
 

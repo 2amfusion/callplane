@@ -1,8 +1,13 @@
 #!/bin/sh
 # Binds Railway $PORT immediately; every GET returns 200 OK.
 # livekit/sip health_port is on SIP_INTERNAL_HEALTH_PORT (see docker-entrypoint.sh).
+echo '[health-wrapper] starting' >&2
 PORT="${PORT:-8080}"
 export PORT
+log_port() {
+  printf '[health-wrapper] PORT=%s (from env)\n' "$PORT" >&2
+}
+log_port
 
 if ! command -v python3 >/dev/null 2>&1; then
   printf '[health-wrapper] ERROR: python3 not found\n' >&2

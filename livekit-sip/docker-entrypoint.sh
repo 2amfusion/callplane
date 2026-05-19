@@ -3,6 +3,8 @@
 # livekit/sip serves real readiness on SIP_INTERNAL_HEALTH_PORT (default 8081).
 set -e
 
+echo '[docker-entrypoint] container started' >&2
+
 log() {
   printf '[docker-entrypoint] %s\n' "$*" >&2
 }
@@ -24,13 +26,19 @@ if [ -z "${PORT:-}" ]; then
   log 'WARN: PORT unset — defaulting to 8080'
 fi
 
-/health-wrapper.sh &
-WRAPPER_PID=$!
-log "Started health-wrapper on PORT=${PORT} (pid ${WRAPPER_PID})"
+# Railway startCommand starts wrapper first (WRAPPER_EXTERNAL=1). Local docker: start here.
+if [ -z "${WRAPPER_EXTERNAL:-}" ]; then
+  /health-wrapper.sh &
+  WRAPPER_PID=$!
+  log "Started health-wrapper on PORT=${PORT} (pid ${WRAPPER_PID})"
+else
+  WRAPPER_PID=""
+  log "health-wrapper started by Railway startCommand (WRAPPER_EXTERNAL=1)"
+fi
 
 i=0
 while [ "$i" -lt 50 ]; do
-  if ! kill -0 "$WRAPPER_PID" 2>/dev/null; then
+  if [ -n "$WRAPPER_PID" ] && ! kill -0 "$WRAPPER_PID" 2>/dev/null; then
     fail 'health-wrapper exited before binding — check deploy logs for [health-wrapper]'
   fi
   if python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/', timeout=1)" 2>/dev/null; then

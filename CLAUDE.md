@@ -49,4 +49,4 @@ auth → telephony → assistants → billing
 - Do **not** commit secrets; `config/railway-dev.yaml` is placeholders only; `config/.gitignore` blocks `*-local.yaml` / `*-secrets.yaml`
 - Do not put Stripe, Postgres, or telephony creds in LiveKit config
 - Health: `GET /` → `200 OK` when node stats are fresh; may 406 briefly during startup
-- SIP Railway: `GET $PORT/` = health-wrapper (must see `[health-wrapper] Listening` in logs). Real SIP: `service ready` then `curl :8081/` → 200. Probing `$PORT` before Redis/SIP ready always failed after a2b376a6 removed the wrapper. `livekit-sip/railway.json` sets **`startCommand`: null** (Dockerfile ENTRYPOINT). **`startCommand = ""` is not null** — it can block the entrypoint and cause instant "service unavailable".
+- SIP Railway: `GET $PORT/` = health-wrapper (must see `[health-wrapper] Listening` in logs). Real SIP: `service ready` then `curl :8081/` → 200. `livekit-sip/railway.json` sets explicit **`startCommand`** shell: wrapper on `$PORT` then `docker-entrypoint.sh`. Wrong Root Directory or SFU startCommand → instant health fail. Do not set manual `PORT=8080` unless debugging — Railway injects `$PORT`.
