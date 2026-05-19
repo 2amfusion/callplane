@@ -13,10 +13,11 @@ dockerfilePath = "Dockerfile"
 #
 # Set service variable PORT=8080 (recommended). SIP signaling uses sip_port (5060) via TCP Proxy.
 #
-# Health check is intentionally DISABLED here — most deploy failures are process exit
-# (Redis, YAML, use_external_ip STUN) before HTTP is up, not a wrong path. With healthcheck
-# enabled Railway marks the deploy failed and hides useful logs. After the process stays up
-# in logs ("service ready"), re-enable: healthcheckPath = "/"
-#
+# Health check DISABLED — must be explicit. Omitting healthcheckPath does NOT turn checks off;
+# Railway then uses the dashboard "Health Check Path" (often still "/"). Use empty string or
+# null in railway.json to override dashboard. Re-enable after logs show "service ready":
+#   healthcheckPath = "/"
+#   healthcheckTimeout = 300
 # When enabled: GET / on $PORT returns 200 + body "OK" (503 if not ready; 429 under CPU load).
+healthcheckPath = ""
 restartPolicyType = "ON_FAILURE"

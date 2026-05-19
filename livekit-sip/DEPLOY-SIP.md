@@ -6,6 +6,22 @@ SIP bridge root: **`livekit-sip/`** (not repo root).
 
 ---
 
+## Stop healthcheck probing NOW (no git push required)
+
+Do these in the Railway dashboard for the **livekit-sip** service (order matters):
+
+1. **Settings → Source → Root Directory** must be **`livekit-sip`** (not repo root). If it is wrong, Railway may use the parent **`livekit-callplane/railway.toml`**, which sets **`healthcheckPath = "/"`** for the SFU — and your SIP deploy will keep probing `/` on `$PORT`.
+2. **Settings → Deploy** (or **Settings → Health Check**, depending on UI version) → **Health Check Path** → **clear the field completely** (empty, not `/`) → **Save**.
+3. **Variables → `PORT`** → set **`8080`** (so when you re-enable health later, probe port matches `health_port`).
+4. **Deployments** → cancel/remove the stuck deploy if it is still **Building** / **Healthcheck**, then **Redeploy** after step 2 (a restart alone may keep the old health path).
+5. On the **new** deployment’s **Details** page, confirm **Health Check Path** is empty and the config source icon (if any) points at **`livekit-sip/railway.toml`** with `healthcheckPath = ""` — not the repo-root `railway.toml`.
+
+**Why removing `healthcheckPath` from git alone did not help:** Railway only disables HTTP deploy health checks when the path is **unset/empty/null**. **Omitting** the key in `railway.toml` does **not** clear a path already saved in the dashboard — dashboard values apply for keys missing from config-as-code. Config-as-code **overrides** the dashboard only when the key **is present** in the file (e.g. `healthcheckPath = ""`).
+
+There is **no** `healthcheckDisabled` flag in [`railway.schema.json`](https://railway.com/railway.schema.json) — only `healthcheckPath` (`string | null`) and `healthcheckTimeout`. Railway does **not** probe `$PORT` when no health path is configured; probing requires an explicit path (dashboard or toml/json).
+
+---
+
 ## 1) New Railway service
 
 1. Open the **same Railway project** as **livekit-callplane** and **Redis**.
@@ -151,7 +167,7 @@ Docs: [Telnyx + LiveKit](https://docs.livekit.io/telephony/start/providers/telny
 
 ## 9) Health check failed — troubleshooting
 
-**Default (2026):** `livekit-sip/railway.toml` ships **without** `healthcheckPath` so deploys are not marked failed while you read logs. Re-enable health checks only after logs show **`service ready`**.
+**Default (2026):** `livekit-sip/railway.toml` sets **`healthcheckPath = ""`** so deploy health checks are **off** even if the dashboard still has `/`. Re-enable only after logs show **`service ready`**.
 
 When `healthcheckPath = "/"` is enabled, Railway marks the deploy failed when **`GET $PORT/`** never returns **200** within the timeout (`healthcheckTimeout` in `railway.toml`, or `RAILWAY_HEALTHCHECK_TIMEOUT_SEC`).
 
@@ -167,19 +183,55 @@ When `healthcheckPath = "/"` is enabled, Railway marks the deploy failed when **
 
 Our **`docker-entrypoint.sh`** injects/overwrites **`health_port:`** from Railway’s **`$PORT`** before the binary starts — redeploy after pulling this fix if health failed with “service unavailable” and logs showed SIP running on 8080 but Railway probed a different port.
 
+### Disable health check — dashboard (screenshot-level)
+
+Railway UI labels move between **Deploy** and **Health Check**; use the field named **Health Check Path**.
+
+| Step | Where | Action |
+|------|--------|--------|
+| 1 | **Project** → service **livekit-sip** | Open the SIP service (not livekit-callplane SFU). |
+| 2 | **Settings** → **Source** | **Root Directory** = `livekit-sip` → **Save**. |
+| 3 | **Settings** → **Deploy** (or **Health Check**) | Find **Health Check Path** → delete `/` so the input is **blank** → **Save**. |
+| 4 | **Settings** → **Config-as-code** (if shown) | Path should be `livekit-sip/railway.toml` (or default under root). |
+| 5 | **Deployments** | **Redeploy** (or cancel stuck deploy, then redeploy). |
+| 6 | Latest deployment → **Details** | **Health Check Path** should show empty / none. If it still shows `/`, check Root Directory (step 2) or push git with `healthcheckPath = ""`. |
+
+**Config-as-code vs dashboard:** Values **in** `railway.toml` / `railway.json` **override** the dashboard for that deploy. Keys **omitted** from the file still use dashboard settings. To disable from git without relying on the dashboard:
+
+```toml
+# livekit-sip/railway.toml
+[deploy]
+healthcheckPath = ""
+```
+
+Or `railway.json` (there is **no** `healthcheckDisabled` in the schema):
+
+```json
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "deploy": {
+    "healthcheckPath": null,
+    "healthcheckTimeout": null
+  }
+}
+```
+
+**Dockerfile `HEALTHCHECK`:** Railway deploy health checks are **not** driven by Docker `HEALTHCHECK` instructions. Our `Dockerfile` has none. Disabling is only about Railway’s **Health Check Path** / `healthcheckPath`.
+
 ### Immediate dashboard actions (do in order)
 
-1. **Variables → `PORT`:** set **`8080`** (stable, matches docs; entrypoint will align `health_port`).
-2. **Variables → `SIP_CONFIG_BODY`:** confirm multiline YAML — not empty, not JSON, placeholders replaced:
+1. **Settings → Deploy → Health Check Path:** **clear** (empty) → **Save** — see table above.
+2. **Settings → Source → Root Directory:** **`livekit-sip`** (avoids parent `railway.toml` with `healthcheckPath = "/"`).
+3. **Variables → `PORT`:** set **`8080`** (stable; entrypoint aligns `health_port`).
+4. **Variables → `SIP_CONFIG_BODY`:** confirm multiline YAML — not empty, not JSON, placeholders replaced:
    - `api_key` / `api_secret` — same as **livekit-callplane** `LIVEKIT_CONFIG` → `keys:`
    - `ws_url: wss://callplane-production.up.railway.app`
    - `redis.address` — private hostname (`*.railway.internal`), **not** `localhost`
    - `redis.password` — quote if it contains `:` or `#`
    - **`health_port: 8080`** (optional if entrypoint wrapper is deployed)
    - **Do not** set **`use_external_ip: true`** and **`nat_1_to_1_ip`** together (process exits on config error)
-3. **Settings → Root Directory:** **`livekit-sip`**
-4. **Redeploy** after variable fixes.
-5. **Still failing with healthcheck enabled?** Remove **`healthcheckPath`** from `livekit-sip/railway.toml` (or clear Health Check Path in dashboard), redeploy, read **Deploy logs** — re-enable once process stays up.
+5. **Redeploy** after steps 1–4; read **Deploy logs** until `service ready`.
+6. **Still probing after clear + redeploy?** Push/pull `healthcheckPath = ""` in `livekit-sip/railway.toml` and redeploy; on deployment **Details**, confirm the path is empty and config source is `livekit-sip/railway.toml`.
 
 ### Deploy logs — grep patterns
 
@@ -288,9 +340,10 @@ Set **`PORT=8080`**. Entrypoint overwrites `health_port` to match `$PORT` if pre
 
 | Strategy | When |
 |----------|------|
-| **No `healthcheckPath`** (current default in git) | Debugging; read logs until `service ready` |
+| **`healthcheckPath = ""`** in `livekit-sip/railway.toml` (current default) | Debugging; overrides dashboard `/` |
+| **Dashboard path cleared** + redeploy | Immediate fix without git push |
 | **`healthcheckPath = "/"`** + `PORT=8080` | After logs prove process stays up |
-| Dashboard **Health Check Path** | Can override `railway.toml` — if deploy still fails after git removed healthcheck, **clear** path in **Settings → Deploy** and redeploy |
+| **Omitting `healthcheckPath` from toml** | Does **not** disable checks — dashboard path still applies |
 
 **503 on `/`** means HTTP is up but monitor not ready (rare after `service ready`). **Connection refused** means wrong port or crash before `svc.Run()`.
 
@@ -303,7 +356,7 @@ healthcheckPath = "/"
 healthcheckTimeout = 300
 ```
 
-Commit, push, redeploy. Or set **Health Check Path** = `/` in the dashboard (overrides toml if conflicting).
+Commit, push, redeploy. Dashboard-only changes apply only for keys **omitted** from `railway.toml`; if the file sets `healthcheckPath = ""`, push an updated toml (or remove that line and set `/` in the dashboard) before re-enabling.
 
 ### F. Exact Railway actions (checklist)
 
