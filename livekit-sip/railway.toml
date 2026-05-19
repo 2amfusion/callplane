@@ -1,0 +1,13 @@
+# Railway config for livekit-sip ONLY (third service).
+# Root Directory in dashboard must be: livekit-sip  (no leading slash)
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Use Dockerfile ENTRYPOINT ["/start.sh"] — NOT livekit-server from repo root.
+startCommand = "/start.sh"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
