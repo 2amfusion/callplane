@@ -76,7 +76,7 @@ def prewarm(proc: JobProcess) -> None:
 server.setup_fnc = prewarm
 
 
-@server.rtc_session(agent_name=AGENT_NAME)
+@server.rtc_session()
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
 
