@@ -137,8 +137,6 @@ async def entrypoint(ctx: JobContext) -> None:
         room_options=room_io.RoomOptions(),
     )
 
-    await session.generate_reply()
-
 
 if __name__ == "__main__":
     cli.run_app(server)
