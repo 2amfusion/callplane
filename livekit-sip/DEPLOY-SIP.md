@@ -32,8 +32,8 @@ Startup order: wrapper on `$PORT` → YAML/Redis → SIP (STUN if `use_external_
 1. Open the **same Railway project** as **livekit-callplane** and **Redis**.
 2. **New** → **GitHub** → select the **`livekit-callplane`** repo.
 3. **Settings → Root Directory:** `livekit-sip` (exactly).
-4. Confirm **Config-as-code** picks up `livekit-sip/railway.json` (`startCommand` starts `health-wrapper` then `docker-entrypoint.sh`, `healthcheckPath = "/"`). Do **not** use `startCommand = ""` or the SFU `livekit-server` command.
-5. **Settings → Deploy:** Start Command should be `/bin/sh -c '/health-wrapper.sh & sleep 2; exec /docker-entrypoint.sh'`. The wrapper binds Railway `$PORT` **before** entrypoint runs. If the dashboard still shows `livekit-server --port …`, fix Root Directory and redeploy latest `main`. See **`VERIFY-DEPLOY.md`** if health still fails.
+4. Confirm **Config-as-code** picks up `livekit-sip/railway.json` (`startCommand` = `/start.sh`, `healthcheckPath = "/"`). Do **not** use `startCommand = ""` or the SFU `livekit-server` command.
+5. **Settings → Deploy:** Start Command should be `/start.sh`. That script binds `health-wrapper` on Railway `$PORT` **before** SIP config work. If the dashboard still shows `livekit-server --port …`, fix Root Directory and redeploy latest `main`. See **`VERIFY-DEPLOY.md`** if health still fails.
 
 ### Wrong service / root directory
 
@@ -201,7 +201,7 @@ Open the **livekit-sip** service (not livekit-callplane SFU) → **Settings**:
 | **Builder** | Dockerfile |
 | **Dockerfile path** | `Dockerfile` (relative to root — not repo-root SFU Dockerfile) |
 | **Config-as-code** | `livekit-sip/railway.json` detected |
-| **Start Command** | `/bin/sh -c '/health-wrapper.sh & sleep 2; exec /docker-entrypoint.sh'` |
+| **Start Command** | `/start.sh` |
 | **Healthcheck path** | `/` |
 | **Healthcheck timeout** | `300` |
 

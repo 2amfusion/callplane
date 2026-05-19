@@ -6,7 +6,7 @@ FROM livekit/sip:v1.3.0
 
 # YAML merge/validate for health_port injection (replaces fragile sed).
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 python3-yaml \
+  && apt-get install -y --no-install-recommends python3 python3-yaml curl \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
@@ -16,15 +16,17 @@ EXPOSE 5060/tcp 5060/udp 5061/tcp 8080/tcp
 EXPOSE 10000-10100/udp
 
 COPY inject-config.py /inject-config.py
+COPY health-wrapper.py /health-wrapper.py
 COPY health-wrapper.sh /health-wrapper.sh
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /inject-config.py /health-wrapper.sh /docker-entrypoint.sh
+COPY start.sh /start.sh
+RUN chmod +x /inject-config.py /health-wrapper.py /health-wrapper.sh /docker-entrypoint.sh /start.sh
 
 # Config via SIP_CONFIG_BODY → inject-config.py → SIP_CONFIG_FILE (see README.md).
-# Railway: railway.json startCommand starts /health-wrapper.sh then exec /docker-entrypoint.sh.
-ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["/docker-entrypoint.sh"]
+# start.sh binds health-wrapper on $PORT, then execs docker-entrypoint.sh.
+# No ENTRYPOINT — Railway startCommand replaces CMD only; avoids ignored shell wrappers.
+CMD ["/start.sh"]
 
 # Railway probes $PORT via health-wrapper (immediate 200). livekit/sip health is internal.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD python3 -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/' % os.environ.get('PORT','8080'), timeout=3)"
+  CMD python3 -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/' % (os.environ.get('PORT') or '8080'), timeout=3)"

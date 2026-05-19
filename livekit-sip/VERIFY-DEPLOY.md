@@ -32,7 +32,7 @@ If build logs show **`livekit-server`** or **no `health-wrapper.sh` COPY**, Root
 |---------|-------------------|---------------------------|
 | **Root Directory** | `livekit-sip` | *(empty / repo root)* |
 | **Config file** | `livekit-sip/railway.json` | `railway.toml` |
-| **Start Command** | `/bin/sh -c '/health-wrapper.sh & sleep 2; exec /docker-entrypoint.sh'` | `/bin/sh -c 'exec /livekit-server --port "${PORT:-7880}"'` |
+| **Start Command** | `/start.sh` | `/bin/sh -c 'exec /livekit-server --port "${PORT:-7880}"'` |
 | **Main env var** | `SIP_CONFIG_BODY` | `LIVEKIT_CONFIG` |
 | **Deploy log prefix** | `[health-wrapper]` / `[docker-entrypoint]` | LiveKit server startup |
 
@@ -81,7 +81,7 @@ If health flaps during slow SIP startup, add on the **livekit-sip** service:
 
 **Settings → Deploy**
 
-- Start Command: `/bin/sh -c '/health-wrapper.sh & sleep 2; exec /docker-entrypoint.sh'`
+- Start Command: `/start.sh`
 - Healthcheck path: `/`
 - Healthcheck timeout: `300`
 

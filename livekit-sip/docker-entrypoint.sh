@@ -1,5 +1,5 @@
 #!/bin/sh
-# Railway probes $PORT via health-wrapper (immediate GET / → 200).
+# Railway probes $PORT via health-wrapper (started by start.sh before this runs).
 # livekit/sip readiness is on SIP_INTERNAL_HEALTH_PORT (default 8081).
 set -e
 
@@ -12,7 +12,6 @@ fail() {
   exit 1
 }
 
-# Railway injects PORT; bind the health wrapper before any slow SIP work.
 PORT="${PORT:-8080}"
 export PORT
 
@@ -22,33 +21,14 @@ if ! command -v python3 >/dev/null 2>&1; then
   fail 'python3 not found in image (Dockerfile must install python3 + python3-yaml)'
 fi
 
-WRAPPER_PID=""
 health_responds() {
   python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/', timeout=1)" 2>/dev/null
 }
 
 if health_responds; then
-  log "health already responding on PORT=${PORT} (Railway startCommand started health-wrapper)"
+  log "health responding on PORT=${PORT} (start.sh started health-wrapper)"
 else
-  /health-wrapper.sh &
-  WRAPPER_PID=$!
-  log "Started health-wrapper on PORT=${PORT} (pid ${WRAPPER_PID})"
-
-  i=0
-  while [ "$i" -lt 100 ]; do
-    if [ -n "$WRAPPER_PID" ] && ! kill -0 "$WRAPPER_PID" 2>/dev/null; then
-      fail 'health-wrapper exited before binding — check deploy logs for [health-wrapper]'
-    fi
-    if health_responds; then
-      log "health-wrapper ready on PORT=${PORT} (Railway GET / will succeed)"
-      break
-    fi
-    i=$((i + 1))
-    sleep 0.05
-  done
-  if [ "$i" -ge 100 ]; then
-    fail "health-wrapper did not respond on PORT=${PORT} within 5s"
-  fi
+  fail "nothing listening on PORT=${PORT} — start.sh must run before docker-entrypoint.sh"
 fi
 
 if [ -z "${SIP_CONFIG_BODY:-}" ]; then
@@ -61,17 +41,5 @@ unset SIP_CONFIG_BODY
 
 log "Starting livekit-sip --config=${SIP_CONFIG_FILE} (internal health on ${SIP_INTERNAL_HEALTH_PORT:-8081})"
 
-cleanup() {
-  if [ -n "$WRAPPER_PID" ]; then
-    kill "$WRAPPER_PID" 2>/dev/null || true
-  fi
-}
-trap cleanup TERM INT
-
-# Foreground SIP; shell stays PID 1 so the background health-wrapper keeps serving $PORT.
-/bin/livekit-sip --config="${SIP_CONFIG_FILE}" &
-SIP_PID=$!
-wait "$SIP_PID"
-EXIT=$?
-cleanup
-exit "$EXIT"
+# Foreground SIP; start.sh (PID 1) keeps the background health-wrapper alive.
+exec /bin/livekit-sip --config="${SIP_CONFIG_FILE}"
