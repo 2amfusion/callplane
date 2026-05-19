@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge SIP_CONFIG_BODY with Railway PORT → health_port; write SIP_CONFIG_FILE."""
+"""Merge SIP_CONFIG_BODY; set health_port for livekit/sip; write SIP_CONFIG_FILE."""
 from __future__ import annotations
 
 import os
@@ -68,9 +68,36 @@ def normalize_redis_address(addr: str) -> str:
     if "://" in addr:
         fail(f"redis.address has unsupported scheme: {addr!r}. Use hostname:6379")
     if ":" not in addr:
-        log(f"WARN: redis.address has no port; appending :6379")
+        log("WARN: redis.address has no port; appending :6379")
         return f"{addr}:6379"
     return addr
+
+
+def apply_redis_env(cfg: dict[str, Any]) -> None:
+    """Fill redis block from Railway Redis plugin vars when YAML omits them."""
+    redis = cfg.setdefault("redis", {})
+    if not isinstance(redis, dict):
+        fail("redis: must be a mapping", cfg)
+
+    url = os.environ.get("REDIS_URL", "").strip()
+    if url and not redis.get("address"):
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or 6379
+        if host:
+            redis["address"] = f"{host}:{port}"
+            if parsed.password and not redis.get("password"):
+                redis["password"] = parsed.password
+            log(f"redis.address from REDIS_URL → {redis['address']}")
+
+    if os.environ.get("REDIS_PASSWORD") and not redis.get("password"):
+        redis["password"] = os.environ["REDIS_PASSWORD"]
+
+    host = os.environ.get("REDIS_HOST", "").strip()
+    if host and not redis.get("address"):
+        port = os.environ.get("REDIS_PORT", "6379").strip() or "6379"
+        redis["address"] = f"{host}:{port}"
+        log(f"redis.address from REDIS_HOST → {redis['address']}")
 
 
 def load_body() -> dict[str, Any]:
@@ -78,7 +105,6 @@ def load_body() -> dict[str, Any]:
     if not raw.strip():
         fail("SIP_CONFIG_BODY is empty. Paste multiline YAML in Railway Variables.")
     raw = raw.replace("\r", "")
-    # Railway CLI / single-line pastes sometimes store literal backslash-n instead of newlines.
     if "\\n" in raw and raw.count("\n") < 3:
         log("WARN: SIP_CONFIG_BODY looks like a single line with \\n — converting to newlines")
         raw = raw.replace("\\n", "\n")
@@ -120,28 +146,45 @@ def validate(cfg: dict[str, Any]) -> None:
         fail("missing redis: block (address + password required)", cfg)
     addr = redis.get("address")
     if not addr:
-        fail("redis.address missing (use *.railway.internal:6379)", cfg)
+        fail(
+            "redis.address missing — use host:6379 (e.g. redis.railway.internal:6379) "
+            "or link Redis and set REDIS_URL on this service",
+            cfg,
+        )
     redis["address"] = normalize_redis_address(str(addr))
     if cfg.get("use_external_ip") is True and cfg.get("nat_1_to_1_ip"):
         fail("use_external_ip: true and nat_1_to_1_ip cannot both be set", cfg)
     if cfg.get("use_external_ip") is True:
         log(
-            "WARN: use_external_ip: true runs STUN at startup — failure exits before health HTTP binds. "
+            "WARN: use_external_ip: true runs STUN at startup — failure exits before SIP health binds. "
             "Use use_external_ip: false for first deploy (config/railway-sip-minimal.yaml)."
         )
 
 
-def main() -> None:
+def internal_health_port() -> int:
+    raw = os.environ.get("SIP_INTERNAL_HEALTH_PORT", "8081").strip()
+    if not raw.isdigit() or not (1 <= int(raw) <= 65535):
+        fail(f"SIP_INTERNAL_HEALTH_PORT must be 1-65535 (got: {raw!r})")
+    internal = int(raw)
     port_s = os.environ.get("PORT", "8080").strip()
-    if not port_s.isdigit() or not (1 <= int(port_s) <= 65535):
-        fail(f"PORT must be a numeric TCP port 1-65535 (got: {port_s!r})")
-    port = int(port_s)
+    if port_s.isdigit() and int(port_s) == internal:
+        fail(
+            f"SIP_INTERNAL_HEALTH_PORT ({internal}) must differ from Railway PORT ({port_s}). "
+            "health-wrapper uses PORT; livekit/sip uses SIP_INTERNAL_HEALTH_PORT."
+        )
+    return internal
+
+
+def main() -> None:
+    internal = internal_health_port()
 
     cfg = load_body()
     apply_env_overrides(cfg)
+    apply_redis_env(cfg)
     validate(cfg)
 
-    cfg["health_port"] = port
+    # livekit/sip monitor — not probed by Railway (wrapper owns $PORT).
+    cfg["health_port"] = internal
 
     try:
         rendered = yaml.safe_dump(cfg, default_flow_style=False, sort_keys=False)
@@ -150,7 +193,11 @@ def main() -> None:
         fail(f"rendered config is invalid YAML: {e}", cfg)
 
     OUT_PATH.write_text(rendered, encoding="utf-8")
-    log(f"Wrote {OUT_PATH} (health_port={port}, redis={cfg['redis']['address']})")
+    railway_port = os.environ.get("PORT", "8080")
+    log(
+        f"Wrote {OUT_PATH} (health_port={internal} for livekit/sip; "
+        f"Railway probes PORT={railway_port} via health-wrapper; redis={cfg['redis']['address']})"
+    )
     print(str(OUT_PATH))
 
 

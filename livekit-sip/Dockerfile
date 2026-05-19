@@ -16,14 +16,15 @@ EXPOSE 5060/tcp 5060/udp 5061/tcp 8080/tcp
 EXPOSE 10000-10100/udp
 
 COPY inject-config.py /inject-config.py
+COPY health-wrapper.sh /health-wrapper.sh
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /inject-config.py /docker-entrypoint.sh
+RUN chmod +x /inject-config.py /health-wrapper.sh /docker-entrypoint.sh
 
 # Config via SIP_CONFIG_BODY → inject-config.py → SIP_CONFIG_FILE (see README.md).
 # Clear upstream livekit-sip --config=/sip/config.yaml from inherited CMD.
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD []
 
-# Railway / local: health on $PORT after Redis + SIP ready ("service ready" in logs).
-HEALTHCHECK --interval=15s --timeout=5s --start-period=180s --retries=5 \
+# Railway probes $PORT via health-wrapper (immediate 200). livekit/sip health is internal.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
   CMD python3 -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/' % os.environ.get('PORT','8080'), timeout=3)"

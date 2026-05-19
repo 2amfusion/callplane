@@ -8,21 +8,22 @@ SIP bridge root: **`livekit-sip/`** (not repo root).
 
 ## How health works
 
-| Topic | Behavior |
-|-------|----------|
-| **Railway probe** | `GET $PORT/` (set **`PORT=8080`**) |
-| **livekit/sip** | Serves health on **`health_port`** in config — entrypoint sets this from **`$PORT`** |
-| **`PORT` env** | Not read by livekit/sip; only used by entrypoint to inject `health_port` |
-| **200 OK** | After Redis connects, SIP starts, and logs show **`service ready`** |
-| **503** | Health port is up but SIP not ready yet (brief during startup) |
-| **Connection refused** | Process crashed (bad YAML, Redis, STUN) or `health_port` not set / wrong `PORT` |
-| **503 on /** | Health port up but SIP not ready yet (brief); persistent 503 = monitor not started |
+| Layer | Port | Role |
+|-------|------|------|
+| **`health-wrapper.sh`** | Railway **`$PORT`** (set **`8080`**) | Binds **before** livekit-sip; **`GET /` → 200** immediately |
+| **`livekit/sip`** | **`8081`** (`SIP_INTERNAL_HEALTH_PORT`) | Real SIP readiness (200 after `service ready` in logs) |
 
-Startup order (livekit/sip v1.3.0): YAML parse → Redis ping → `sip.NewService` (STUN if `use_external_ip`) → `sipsrv.Start` → `svc.Run` binds health HTTP on `health_port`. Health returns **200** only after `mon.Start()` (inside `sipsrv.Start`), not before.
+Railway only probes **`$PORT`**. livekit/sip does **not** read `PORT`; the entrypoint sets `health_port` to the internal port so the wrapper can own `$PORT`.
 
-`inject-config.py` writes `/tmp/sip-config.yaml` with `health_port: $PORT` — do **not** use `redis://` URLs; use `hostname:6379`.
+| Symptom | Meaning |
+|---------|---------|
+| **Health #1 instant fail, no `[docker-entrypoint]`** | Wrong Root Directory (parent SFU `railway.toml`) or custom **startCommand** on this service |
+| **Health #1 instant fail, no `[health-wrapper]`** | Old image or entrypoint never ran — redeploy latest `main` |
+| **Wrapper OK, SIP crashes** | Redis/YAML/STUN — check logs after `[health-wrapper] Listening` |
 
-**Do not** use `use_external_ip: true` on first deploy — STUN failure exits before health binds. Use [`config/railway-sip-minimal.yaml`](config/railway-sip-minimal.yaml).
+Startup order: wrapper on `$PORT` → YAML/Redis → SIP (STUN if `use_external_ip`) → internal health on **8081**. Use **`host:6379`** for Redis (not `redis://` in YAML). Link Redis in the same project or copy `redis.railway.internal` from SFU `LIVEKIT_CONFIG`.
+
+**Do not** use `use_external_ip: true` on first deploy — STUN failure exits before SIP health binds. Use [`config/railway-sip-minimal.yaml`](config/railway-sip-minimal.yaml).
 
 ---
 
@@ -31,7 +32,8 @@ Startup order (livekit/sip v1.3.0): YAML parse → Redis ping → `sip.NewServic
 1. Open the **same Railway project** as **livekit-callplane** and **Redis**.
 2. **New** → **GitHub** → select the **`livekit-callplane`** repo.
 3. **Settings → Root Directory:** `livekit-sip` (exactly).
-4. Confirm **Config-as-code** picks up `livekit-sip/railway.toml` (`healthcheckPath = "/"`, `healthcheckTimeout = 300`).
+4. Confirm **Config-as-code** picks up `livekit-sip/railway.toml` (`startCommand = ""`, `healthcheckPath = "/"`).
+5. **Settings → Deploy:** clear any custom **Start Command** (must be empty — Dockerfile `ENTRYPOINT` only).
 
 ### Wrong service / root directory
 
@@ -46,8 +48,9 @@ Startup order (livekit/sip v1.3.0): YAML parse → Redis ping → `sip.NewServic
 
 | Variable | Value / action |
 |----------|----------------|
-| **`PORT`** | **`8080`** — Railway probes this; entrypoint sets `health_port` to match |
+| **`PORT`** | **`8080`** — Railway probes this (`health-wrapper` binds here) |
 | **`SIP_CONFIG_BODY`** | Multiline YAML — use template in **§3** (replace `YOUR_*`) |
+| **`SIP_INTERNAL_HEALTH_PORT`** | Optional; default **`8081`** (livekit/sip monitor; not probed by Railway) |
 
 Optional split (still need `redis:` in YAML):
 
@@ -77,7 +80,7 @@ logging:
   level: info
 ```
 
-**Do not** set `health_port` in YAML — the entrypoint injects it from `PORT`.
+**Do not** set `health_port` in YAML — the entrypoint sets it to **`8081`** (internal). Railway uses **`$PORT`** via the wrapper.
 
 | Placeholder | Source |
 |-------------|--------|
@@ -135,7 +138,7 @@ lk --url "wss://callplane-production.up.railway.app" \
 ## 7) Verify
 
 - Deploy logs: Redis connected, **`service ready`**, SIP on **5060**.
-- Health: `curl http://$PORT/` → **200** + body `OK` (from livekit/sip, not a wrapper).
+- Health: `curl http://$PORT/` → **200** + `OK` (wrapper). After `service ready`: `curl http://127.0.0.1:8081/` → **200** (livekit/sip).
 - `nc -vz <tcp-proxy-host> <tcp-proxy-port>` succeeds from outside.
 
 ---
@@ -158,7 +161,8 @@ Railway fails if **`GET $PORT/`** never returns **200** within **300s**.
 | `invalid YAML` / inject-config error | Bad paste, tabs, smart quotes | Re-paste template; check deploy log for redacted config dump |
 | No logs at all | Wrong root directory or build failed | Root Directory = `livekit-sip` |
 | Health #1 instant fail, no `[docker-entrypoint]` | Parent `railway.toml` / wrong Dockerfile | Root Directory must be **`livekit-sip`** |
-| Instant fail, `livekit-sip` usage error in logs | `startCommand` set on this service | Remove it — use Dockerfile `ENTRYPOINT` only |
+| Instant fail, `livekit-sip` usage error in logs | `startCommand` set on this service | Clear Start Command; `railway.toml` has `startCommand = ""` |
+| Deploy passes but no SIP / no `service ready` | Redis or STUN | Fix `redis.address`; keep `use_external_ip: false` |
 | `keys:` in YAML but no `api_key` | Pasted **LIVEKIT_CONFIG** into **SIP_CONFIG_BODY** | Use `api_key` / `api_secret` (see §3 template) |
 
 ### Field names (livekit/sip v1.3.0)
@@ -169,7 +173,7 @@ Railway fails if **`GET $PORT/`** never returns **200** within **300s**.
 | `api_secret` | Or env `LIVEKIT_API_SECRET` |
 | `ws_url` | `wss://…` for production |
 | `redis.address` / `redis.password` | Required |
-| `health_port` | Set by entrypoint from `PORT` — omit in YAML |
+| `health_port` | Set by entrypoint to `8081` — omit in YAML |
 | `logging.level` | Prefer over legacy root `log_level` |
 
 ### Local smoke test

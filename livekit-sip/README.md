@@ -23,7 +23,8 @@ SIP bridge between **Telnyx** (PSTN) and **livekit-callplane** (WebRTC SFU). Thi
 | **5060** | UDP + TCP | SIP signaling (default) |
 | **5061** | TCP (TLS) | Optional SIP over TLS |
 | **10000–20000** (default) | **UDP** | RTP media (`rtp_port` in config; narrow in template) |
-| **8080** (`$PORT`) | HTTP | Health checks — entrypoint sets `health_port` from `PORT` |
+| **8080** (`$PORT`) | HTTP | Railway health — `health-wrapper.sh` (immediate 200) |
+| **8081** | HTTP | livekit/sip real health (`SIP_INTERNAL_HEALTH_PORT`) |
 
 ### Config delivery
 
@@ -31,7 +32,7 @@ SIP bridge between **Telnyx** (PSTN) and **livekit-callplane** (WebRTC SFU). Thi
 2. **`SIP_CONFIG_FILE`** — path to a mounted file (not typical on Railway).
 3. **Env overrides:** `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_WS_URL` (still need `redis:` in YAML).
 
-**Railway health:** Set **`PORT=8080`**. Entrypoint injects `health_port: 8080` into config. `GET /` returns **200** after Redis + SIP are ready (`service ready` in logs). See [`DEPLOY-SIP.md`](DEPLOY-SIP.md).
+**Railway health:** Set **`PORT=8080`**. Wrapper returns **200** on `GET /` immediately; livekit/sip readiness is on **8081** after `service ready`. See [`DEPLOY-SIP.md`](DEPLOY-SIP.md).
 
 Official reference: [livekit/sip README](https://github.com/livekit/sip/blob/main/README.md).
 

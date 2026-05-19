@@ -7,11 +7,9 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# inject-config.py writes /tmp/sip-config.yaml with health_port = Railway $PORT.
-# Health: GET / on $PORT returns 200 after Redis + SIP ready ("service ready" in logs).
-# Set PORT=8080 on this service. SIP signaling uses sip_port (5060) via TCP Proxy.
-# Do not set startCommand — Dockerfile ENTRYPOINT is /docker-entrypoint.sh; Railway would
-# pass startCommand as $@ and break livekit-sip (health never binds → service unavailable).
+# Dockerfile ENTRYPOINT runs health-wrapper on $PORT, then livekit-sip.
+# startCommand must be null — a dashboard/SFU startCommand breaks the SIP image.
+startCommand = ""
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

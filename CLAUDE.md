@@ -23,7 +23,7 @@ docker build -t livekit-callplane .
 - **`LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` are NOT read by livekit-server** — client/callplane-api names only; server needs `keys:` in YAML or `LIVEKIT_KEYS`.
 - Generate keys: `go run ./cmd/server generate-keys`
 - **UDP:** Railway public networking does **not** support arbitrary **inbound UDP** (wide RTP/ICE/SIP media). Official Railway LiveKit template runs **TCP-only** WebRTC + TCP proxy (often port **7882** in their template). Use `rtc.tcp_port` + `allow_tcp_fallback` here; omit wide `port_range_*` for Railway-only SFU.
-- **`livekit/sip`:** third Railway service in `livekit-sip/` — **`SIP_CONFIG_BODY`**, TCP proxy on **5060**. `inject-config.py` writes `/tmp/sip-config.yaml` with **`health_port` = `$PORT`** (set **PORT=8080**); Railway **`GET /`** = real livekit/sip health (200 after `service ready`). **`redis.address`** must be `host:6379`, not `redis://`. **`use_external_ip: true`** STUN exits before health — use `railway-sip-minimal.yaml` first. Wrong Root Directory = parent SFU `railway.toml` → instant health fail. Deploy: `livekit-sip/DEPLOY-SIP.md`.
+- **`livekit/sip`:** third Railway service in `livekit-sip/` — **`SIP_CONFIG_BODY`**, TCP proxy on **5060**. **`health-wrapper.sh`** binds **`$PORT`** (200 immediately); livekit/sip uses **`health_port` 8081**. Wrong Root Directory or sticky **startCommand** → instant health fail. **`redis.address`** = `host:6379`. Deploy: `livekit-sip/DEPLOY-SIP.md`.
 - Expose **`rtc.tcp_port`** via Railway **TCP Proxy** (second public port), matching `LIVEKIT_CONFIG` (this repo defaults to **7881**).
 
 ### Railway troubleshooting
@@ -49,4 +49,4 @@ auth → telephony → assistants → billing
 - Do **not** commit secrets; `config/railway-dev.yaml` is placeholders only; `config/.gitignore` blocks `*-local.yaml` / `*-secrets.yaml`
 - Do not put Stripe, Postgres, or telephony creds in LiveKit config
 - Health: `GET /` → `200 OK` when node stats are fresh; may 406 briefly during startup
-- SIP Railway: health is real livekit/sip on `$PORT` — grep `service ready` then `curl $PORT/` → 200; connection refused = crash before health (Redis/STUN/YAML). Do **not** set Railway `startCommand` on livekit-sip (duplicates ENTRYPOINT → livekit-sip gets wrong argv). Do **not** paste SFU `keys:` YAML — SIP needs `api_key` / `api_secret`.
+- SIP Railway: `GET $PORT/` = health-wrapper (must see `[health-wrapper] Listening` in logs). Real SIP: `service ready` then `curl :8081/` → 200. Probing `$PORT` before Redis/SIP ready always failed after a2b376a6 removed the wrapper. Clear dashboard **Start Command**; `railway.toml` has `startCommand = ""`.
