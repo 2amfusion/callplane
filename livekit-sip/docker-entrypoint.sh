@@ -35,7 +35,11 @@ if [ -z "${SIP_CONFIG_BODY:-}" ]; then
   fail 'SIP_CONFIG_BODY is empty. Paste multiline YAML in Railway Variables (see DEPLOY-SIP.md).'
 fi
 
-CONFIG_PATH=$(python3 /inject-config.py) || exit 1
+# inject-config.py prints ONLY the file path on stdout; logs go to stderr (visible in Railway).
+CONFIG_PATH=$(python3 /inject-config.py | tr -d '\r' | tail -n 1) || exit 1
+if [ -z "${CONFIG_PATH}" ] || [ ! -f "${CONFIG_PATH}" ]; then
+  fail "inject-config did not produce a config file (check stderr above for [inject-config] errors)"
+fi
 export SIP_CONFIG_FILE="${CONFIG_PATH}"
 unset SIP_CONFIG_BODY
 
