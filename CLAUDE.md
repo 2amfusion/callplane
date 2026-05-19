@@ -23,7 +23,7 @@ docker build -t livekit-callplane .
 - **`LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` are NOT read by livekit-server** — client/callplane-api names only; server needs `keys:` in YAML or `LIVEKIT_KEYS`.
 - Generate keys: `go run ./cmd/server generate-keys`
 - **UDP:** Railway public networking does **not** support arbitrary **inbound UDP** (wide RTP/ICE/SIP media). Official Railway LiveKit template runs **TCP-only** WebRTC + TCP proxy (often port **7882** in their template). Use `rtc.tcp_port` + `allow_tcp_fallback` here; omit wide `port_range_*` for Railway-only SFU.
-- **`livekit/sip`:** third Railway service in `livekit-sip/` — **`SIP_CONFIG_BODY`** (official upstream env name), TCP proxy on **5060**, **`health_port` 8080**. Set **`PORT=8080`** on the service too — Railway health checks always probe **`$PORT`**, which must match **`health_port`** or deploy fails. Telnyx uses TCP proxy hostname, **not** `wss://…railway.app`. Inbound RTP UDP still blocked on Railway — see `CALLPLANE.md` “Phone → Telnyx”. Deploy checklist: `livekit-sip/DEPLOY-SIP.md`.
+- **`livekit/sip`:** third Railway service in `livekit-sip/` — **`SIP_CONFIG_BODY`**, TCP proxy on **5060**. Entrypoint injects **`health_port` from `$PORT`** (set **8080**); Railway **`GET /`** hits real livekit/sip health (200 after `service ready` in logs). Omit `health_port` in YAML. **`use_external_ip: true`** STUN can exit before health binds — use `config/railway-sip-minimal.yaml` first. Wrong Root Directory uses parent SFU `railway.toml`. Telnyx: TCP proxy hostname, **not** `wss://…railway.app`. Deploy: `livekit-sip/DEPLOY-SIP.md`.
 - Expose **`rtc.tcp_port`** via Railway **TCP Proxy** (second public port), matching `LIVEKIT_CONFIG` (this repo defaults to **7881**).
 
 ### Railway troubleshooting
@@ -36,7 +36,7 @@ docker build -t livekit-callplane .
 | `one of key-file or keys must be provided` | `LIVEKIT_CONFIG` missing or has no `keys:` block |
 | `could not parse config` | Invalid YAML in `LIVEKIT_CONFIG` (unquoted `:` in secrets, bad indentation) |
 | `ip address is required and not set` | RTC IP discovery failed; ensure `rtc.use_external_ip: true` in config |
-| Health check fails (SIP service) | Set **`PORT=8080`** to match **`health_port`** in `SIP_CONFIG_BODY` — Railway only probes `$PORT` |
+| Health check fails (SIP service) | Redis/YAML/STUN crash before `service ready`, wrong Root Directory (`livekit-sip`), or `PORT` ≠ injected `health_port` — `livekit-sip/DEPLOY-SIP.md` §8 |
 
 Health: `GET /` returns **200 OK** when node stats are fresh (<4s). Brief **406** right after listen is normal; Railway retries until 200 or timeout (300s).
 
@@ -49,3 +49,4 @@ auth → telephony → assistants → billing
 - Do **not** commit secrets; `config/railway-dev.yaml` is placeholders only; `config/.gitignore` blocks `*-local.yaml` / `*-secrets.yaml`
 - Do not put Stripe, Postgres, or telephony creds in LiveKit config
 - Health: `GET /` → `200 OK` when node stats are fresh; may 406 briefly during startup
+- SIP Railway: health is real livekit/sip on `$PORT` — grep `service ready` then `curl $PORT/` → 200; connection refused = crash before health (Redis/STUN/YAML)
