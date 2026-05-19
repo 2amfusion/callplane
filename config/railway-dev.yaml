@@ -10,11 +10,11 @@
 #   go run ./cmd/server generate-keys
 #
 # Railway notes:
-# - Expose TCP port 7880 (HTTP/WebSocket) in Railway networking.
+# - Do NOT set port here for Railway — railway.toml startCommand passes --port $PORT so health checks match.
+# - For local/docker without $PORT, omit port (defaults to 7880) or set port: 7880.
 # - UDP port ranges are unreliable on Railway; prefer TCP ICE (tcp_port + allow_tcp_fallback).
 # - Add a Railway Redis plugin (or external Redis) and point redis.address below.
-
-port: 7880
+# - Replace YOUR_* placeholders before pasting into LIVEKIT_CONFIG (unfilled values crash at startup).
 
 redis:
   address: YOUR_REDIS_HOST:6379
