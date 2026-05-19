@@ -24,7 +24,8 @@ RUN chmod +x /inject-config.py /health-wrapper.py /health-wrapper.sh /docker-ent
 
 # Config via SIP_CONFIG_BODY → inject-config.py → SIP_CONFIG_FILE (see README.md).
 # start.sh binds health-wrapper on $PORT, then execs docker-entrypoint.sh.
-# No ENTRYPOINT — Railway startCommand replaces CMD only; avoids ignored shell wrappers.
+# MUST clear upstream ENTRYPOINT [/livekit-sip] or Docker runs: livekit-sip /start.sh (health never binds).
+ENTRYPOINT []
 CMD ["/start.sh"]
 
 # Railway probes $PORT via health-wrapper (immediate 200). livekit/sip health is internal.
