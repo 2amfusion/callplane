@@ -2,7 +2,7 @@
 # Paste into Railway → livekit-sip service → Variables → SIP_CONFIG_BODY (multiline).
 # Replace YOUR_* placeholders. Use the SAME redis + api keys as livekit-callplane.
 #
-# Entrypoint sets health_port from Railway $PORT (8080). Do not set health_port in YAML.
+# health-wrapper uses PORT (8080); entrypoint sets livekit health_port to 8081. Omit health_port in YAML.
 
 api_key: YOUR_KEY_ID
 api_secret: YOUR_KEY_SECRET
