@@ -15,9 +15,12 @@ SIP bridge root: **`livekit-sip/`** (not repo root).
 | **`PORT` env** | Not read by livekit/sip; only used by entrypoint to inject `health_port` |
 | **200 OK** | After Redis connects, SIP starts, and logs show **`service ready`** |
 | **503** | Health port is up but SIP not ready yet (brief during startup) |
-| **Connection refused** | Process crashed (bad YAML, Redis, STUN) or `health_port` not set |
+| **Connection refused** | Process crashed (bad YAML, Redis, STUN) or `health_port` not set / wrong `PORT` |
+| **503 on /** | Health port up but SIP not ready yet (brief); persistent 503 = monitor not started |
 
-Startup order: YAML parse → Redis → SIP/STUN (if enabled) → health HTTP on `$PORT` in `svc.Run()`.
+Startup order (livekit/sip v1.3.0): YAML parse → Redis ping → `sip.NewService` (STUN if `use_external_ip`) → `sipsrv.Start` → `svc.Run` binds health HTTP on `health_port`. Health returns **200** only after `mon.Start()` (inside `sipsrv.Start`), not before.
+
+`inject-config.py` writes `/tmp/sip-config.yaml` with `health_port: $PORT` — do **not** use `redis://` URLs; use `hostname:6379`.
 
 **Do not** use `use_external_ip: true` on first deploy — STUN failure exits before health binds. Use [`config/railway-sip-minimal.yaml`](config/railway-sip-minimal.yaml).
 
@@ -151,8 +154,10 @@ Railway fails if **`GET $PORT/`** never returns **200** within **300s**.
 | `could not parse config` | Bad YAML | Fix indentation; quote special chars |
 | `could not resolve external IP` | `use_external_ip: true` + STUN failed | Set `use_external_ip: false` |
 | `use_external_ip and nat_1_to_1_ip` | Conflicting NAT | Use one mode only |
-| `connection refused` (Redis) | Wrong host/password | Use `*.railway.internal` from SFU config |
+| `connection refused` (Redis) | Wrong host/password or `redis://` URL | Use `host:6379` (e.g. `redis.railway.internal:6379`), not `redis://…` |
+| `invalid YAML` / inject-config error | Bad paste, tabs, smart quotes | Re-paste template; check deploy log for redacted config dump |
 | No logs at all | Wrong root directory or build failed | Root Directory = `livekit-sip` |
+| Health #1 instant fail, no `[docker-entrypoint]` | Parent `railway.toml` / wrong Dockerfile | Root Directory must be **`livekit-sip`** |
 
 ### Field names (livekit/sip v1.3.0)
 

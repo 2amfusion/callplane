@@ -7,11 +7,10 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Upstream reads inline YAML from env SIP_CONFIG_BODY (https://github.com/livekit/sip#config).
-# docker-entrypoint.sh sets health_port from Railway $PORT (default 8080) before starting livekit-sip.
-# Health: GET / on $PORT returns 200 after Redis connects and SIP logs "service ready".
-#
-# Set service variable PORT=8080. SIP signaling uses sip_port (5060) via TCP Proxy.
+# inject-config.py writes /tmp/sip-config.yaml with health_port = Railway $PORT.
+# Health: GET / on $PORT returns 200 after Redis + SIP ready ("service ready" in logs).
+# Set PORT=8080 on this service. SIP signaling uses sip_port (5060) via TCP Proxy.
+startCommand = "/docker-entrypoint.sh"
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
