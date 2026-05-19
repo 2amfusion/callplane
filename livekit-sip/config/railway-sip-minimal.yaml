@@ -1,6 +1,6 @@
 # Minimal SIP_CONFIG_BODY for Railway — isolate config vs STUN/NAT issues.
 # Replace YOUR_* only. Paste as one multiline variable (no surrounding quotes).
-# Set PORT=8080 on the service. Entrypoint injects health_port from PORT automatically.
+# Set PORT=8080 on the service. health-wrapper uses PORT; livekit/sip health_port is 8081.
 
 api_key: YOUR_KEY_ID
 api_secret: YOUR_KEY_SECRET
@@ -10,8 +10,7 @@ redis:
   address: YOUR_REDIS_HOST:6379
   password: YOUR_REDIS_PASSWORD
 
-# Optional — entrypoint sets health_port from PORT. Omit or leave commented.
-# health_port: 8080
+# Do not set health_port — entrypoint sets it to 8081 (internal; Railway probes PORT via wrapper).
 
 sip_port: 5060
 rtp_port: 10000-10100

@@ -36,7 +36,7 @@ docker build -t livekit-callplane .
 | `one of key-file or keys must be provided` | `LIVEKIT_CONFIG` missing or has no `keys:` block |
 | `could not parse config` | Invalid YAML in `LIVEKIT_CONFIG` (unquoted `:` in secrets, bad indentation) |
 | `ip address is required and not set` | RTC IP discovery failed; ensure `rtc.use_external_ip: true` in config |
-| Health check fails (SIP service) | Redis/YAML/STUN crash before `service ready`, wrong Root Directory (`livekit-sip`), or `PORT` ≠ injected `health_port` — `livekit-sip/DEPLOY-SIP.md` §8 |
+| Health check fails (SIP service) | Wrong Root Directory, sticky **startCommand**, or no `[health-wrapper] Listening` in logs — `livekit-sip/DEPLOY-SIP.md` §8 |
 
 Health: `GET /` returns **200 OK** when node stats are fresh (<4s). Brief **406** right after listen is normal; Railway retries until 200 or timeout (300s).
 
