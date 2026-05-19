@@ -40,6 +40,7 @@ from livekit.agents import (
 from livekit.plugins import deepgram, elevenlabs, silero
 
 from bitebuddy_llm import BiteBuddyLLM
+from phone_utils import normalize_e164_us
 
 logger = logging.getLogger("callplane-agents")
 load_dotenv()
@@ -89,8 +90,11 @@ async def entrypoint(ctx: JobContext) -> None:
         attrs = {}
 
     call_id = attrs.get(SIP_ATTR_CALL_ID) or ctx.room.name
-    business_phone = attrs.get(SIP_ATTR_TRUNK, "")
-    caller_phone = attrs.get(SIP_ATTR_CALLER, "")
+    business_phone_raw = attrs.get(SIP_ATTR_TRUNK, "")
+    caller_phone_raw = attrs.get(SIP_ATTR_CALLER, "")
+    # BiteBuddy DB lookup is exact match; SIP often sends 1218... without +1.
+    business_phone = normalize_e164_us(business_phone_raw)
+    caller_phone = normalize_e164_us(caller_phone_raw)
 
     ctx.log_context_fields = {
         "room": ctx.room.name,
@@ -99,10 +103,12 @@ async def entrypoint(ctx: JobContext) -> None:
     }
 
     logger.info(
-        "SIP call_id=%s business=%s caller=%s",
+        "SIP call_id=%s business=%s (raw=%s) caller=%s (raw=%s)",
         call_id,
         business_phone,
+        business_phone_raw,
         caller_phone,
+        caller_phone_raw,
     )
 
     bitebuddy_llm = BiteBuddyLLM.from_env(

@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY agent.py bitebuddy_llm.py health-wrapper.py start.sh .
+COPY agent.py bitebuddy_llm.py phone_utils.py health-wrapper.py start.sh .
 RUN chmod +x start.sh
 
 # Pre-bundle common model weights where supported (best-effort).
