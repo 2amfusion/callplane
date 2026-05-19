@@ -32,10 +32,8 @@ Startup order: wrapper on `$PORT` → YAML/Redis → SIP (STUN if `use_external_
 1. Open the **same Railway project** as **livekit-callplane** and **Redis**.
 2. **New** → **GitHub** → select the **`livekit-callplane`** repo.
 3. **Settings → Root Directory:** `livekit-sip` (exactly).
-4. Confirm **Config-as-code** picks up `livekit-sip/railway.json` (explicit `startCommand` with `health-wrapper`, `healthcheckPath = "/"`). Do **not** use `startCommand = ""` — empty string blocks the shell wrapper.
-5. **Settings → Deploy:** Start Command must show:
-   `/bin/sh -c '/health-wrapper.sh & WRAPPER_EXTERNAL=1 exec /docker-entrypoint.sh'`
-   If it still shows the SFU command (`livekit-server --port …`), wrong root directory or stale dashboard override — fix root, redeploy latest `main`.
+4. Confirm **Config-as-code** picks up `livekit-sip/railway.json` (`startCommand` = `exec /docker-entrypoint.sh`, `healthcheckPath = "/"`). Do **not** use `startCommand = ""` or the SFU `livekit-server` command.
+5. **Settings → Deploy:** Start Command should be `/bin/sh -c 'exec /docker-entrypoint.sh'`. The entrypoint starts `health-wrapper` on Railway `$PORT` before SIP. If the dashboard still shows `livekit-server --port …`, fix Root Directory and redeploy latest `main`.
 
 ### Wrong service / root directory
 
@@ -163,7 +161,7 @@ Railway fails if **`GET $PORT/`** never returns **200** within **300s**.
 | `invalid YAML` / inject-config error | Bad paste, tabs, smart quotes | Re-paste template; check deploy log for redacted config dump |
 | No logs at all | Wrong root directory or build failed | Root Directory = `livekit-sip` |
 | Health #1 instant fail, no `[docker-entrypoint]` | Parent `railway.toml` / wrong Dockerfile | Root Directory must be **`livekit-sip`** |
-| Instant fail, `livekit-sip` usage error in logs | SFU `startCommand` copied to this service | Root = `livekit-sip`; startCommand must be health-wrapper shell (see §10) |
+| Instant fail, `livekit-sip` usage error in logs | SFU `startCommand` copied to this service | Root = `livekit-sip`; startCommand = `exec /docker-entrypoint.sh` (see §10) |
 | Deploy passes but no SIP / no `service ready` | Redis or STUN | Fix `redis.address`; keep `use_external_ip: false` |
 | `keys:` in YAML but no `api_key` | Pasted **LIVEKIT_CONFIG** into **SIP_CONFIG_BODY** | Use `api_key` / `api_secret` (see §3 template) |
 
@@ -203,7 +201,7 @@ Open the **livekit-sip** service (not livekit-callplane SFU) → **Settings**:
 | **Builder** | Dockerfile |
 | **Dockerfile path** | `Dockerfile` (relative to root — not repo-root SFU Dockerfile) |
 | **Config-as-code** | `livekit-sip/railway.json` detected |
-| **Start Command** | `/bin/sh -c '/health-wrapper.sh & WRAPPER_EXTERNAL=1 exec /docker-entrypoint.sh'` |
+| **Start Command** | `/bin/sh -c 'exec /docker-entrypoint.sh'` |
 | **Healthcheck path** | `/` |
 | **Healthcheck timeout** | `300` |
 
@@ -212,8 +210,8 @@ Open the **livekit-sip** service (not livekit-callplane SFU) → **Settings**:
 1. `[health-wrapper] starting`
 2. `[health-wrapper] PORT=…` (must match Railway-injected `$PORT`, not a hardcoded guess)
 3. `[health-wrapper] Listening on 0.0.0.0:…`
-4. `[docker-entrypoint] container started`
-5. `[docker-entrypoint] entrypoint start (PORT=…`
+4. `[docker-entrypoint] entrypoint start (PORT=…`
+5. `[docker-entrypoint] health-wrapper ready on PORT=…`
 
 | Log pattern | Meaning |
 |-------------|---------|

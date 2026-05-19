@@ -84,7 +84,7 @@ On macOS, use `host.docker.internal` in `redis.address` / `ws_url` if Redis/SFU 
 | `Dockerfile` | `FROM livekit/sip:v1.3.0` + entrypoint |
 | `docker-entrypoint.sh` | Runs `inject-config.py`, then `livekit-sip` with `SIP_CONFIG_FILE` |
 | `inject-config.py` | YAML validate, `health_port` → 8081, writes `/tmp/sip-config.yaml` |
-| `railway.json` | Build + healthcheck; explicit **`startCommand`** starts wrapper on `$PORT` then entrypoint |
+| `railway.json` | Build + healthcheck; **`startCommand`** = `exec /docker-entrypoint.sh` (wrapper binds `$PORT` inside entrypoint) |
 | `config/railway-sip.yaml` | Full `SIP_CONFIG_BODY` template |
 | `config/railway-sip-minimal.yaml` | Minimal config (`use_external_ip: false`) |
 | `DEPLOY-SIP.md` | Railway deploy + troubleshooting |
