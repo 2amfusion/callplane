@@ -32,8 +32,8 @@ Startup order: wrapper on `$PORT` → YAML/Redis → SIP (STUN if `use_external_
 1. Open the **same Railway project** as **livekit-callplane** and **Redis**.
 2. **New** → **GitHub** → select the **`livekit-callplane`** repo.
 3. **Settings → Root Directory:** `livekit-sip` (exactly).
-4. Confirm **Config-as-code** picks up `livekit-sip/railway.toml` (`startCommand = ""`, `healthcheckPath = "/"`).
-5. **Settings → Deploy:** clear any custom **Start Command** (must be empty — Dockerfile `ENTRYPOINT` only).
+4. Confirm **Config-as-code** picks up `livekit-sip/railway.json` (`"startCommand": null`, `healthcheckPath = "/"`). Do **not** use `startCommand = ""` — empty string is not null and can prevent `/docker-entrypoint.sh` from running.
+5. **Settings → Deploy:** Start Command should show as unset/null (Dockerfile `ENTRYPOINT` only). If it still shows the SFU command (`livekit-server --port …`), redeploy after pulling latest `main`.
 
 ### Wrong service / root directory
 
@@ -161,7 +161,7 @@ Railway fails if **`GET $PORT/`** never returns **200** within **300s**.
 | `invalid YAML` / inject-config error | Bad paste, tabs, smart quotes | Re-paste template; check deploy log for redacted config dump |
 | No logs at all | Wrong root directory or build failed | Root Directory = `livekit-sip` |
 | Health #1 instant fail, no `[docker-entrypoint]` | Parent `railway.toml` / wrong Dockerfile | Root Directory must be **`livekit-sip`** |
-| Instant fail, `livekit-sip` usage error in logs | `startCommand` set on this service | Clear Start Command; `railway.toml` has `startCommand = ""` |
+| Instant fail, `livekit-sip` usage error in logs | SFU `startCommand` copied to this service | `railway.json` must have `"startCommand": null`; redeploy — never `""` |
 | Deploy passes but no SIP / no `service ready` | Redis or STUN | Fix `redis.address`; keep `use_external_ip: false` |
 | `keys:` in YAML but no `api_key` | Pasted **LIVEKIT_CONFIG** into **SIP_CONFIG_BODY** | Use `api_key` / `api_secret` (see §3 template) |
 

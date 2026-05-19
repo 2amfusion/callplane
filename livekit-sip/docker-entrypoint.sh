@@ -14,10 +14,6 @@ fail() {
 
 log "entrypoint start (PORT=${PORT:-8080} SIP_INTERNAL_HEALTH_PORT=${SIP_INTERNAL_HEALTH_PORT:-8081})"
 
-if [ -z "${SIP_CONFIG_BODY:-}" ]; then
-  fail 'SIP_CONFIG_BODY is empty. Paste multiline YAML in Railway Variables (see DEPLOY-SIP.md).'
-fi
-
 if ! command -v python3 >/dev/null 2>&1; then
   fail 'python3 not found in image (Dockerfile must install python3 + python3-yaml)'
 fi
@@ -46,6 +42,10 @@ while [ "$i" -lt 50 ]; do
 done
 if [ "$i" -ge 50 ]; then
   fail "health-wrapper did not respond on PORT=${PORT} within 5s"
+fi
+
+if [ -z "${SIP_CONFIG_BODY:-}" ]; then
+  fail 'SIP_CONFIG_BODY is empty. Paste multiline YAML in Railway Variables (see DEPLOY-SIP.md).'
 fi
 
 CONFIG_PATH=$(python3 /inject-config.py) || exit 1
