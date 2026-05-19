@@ -104,7 +104,7 @@ Summary:
 1. **Do not** rely on “Generate Domain” HTTPS for SIP — that is HTTP only.
 2. Add **TCP Proxy** → application port **5060** (SIP signaling over TCP).
 3. Optional second TCP Proxy → **5061** if you enable `tls:` in config.
-4. **Health:** `health_port: 8080` in config; `railway.toml` checks `GET /`.
+4. **Health:** `PORT=8080`; entrypoint syncs `health_port`. `railway.toml` disables healthcheck by default — enable `/` after logs show `service ready`.
 5. **No UDP UI** — you cannot map `10000-20000/udp` like Docker `-p`. Document for future Railway UDP support.
 
 ### 4. Advertised IP / hostname
@@ -186,7 +186,8 @@ docker run --rm --network host \
 |------|---------|
 | `Dockerfile` | `FROM livekit/sip:v1.3.0` + PORT/health_port entrypoint |
 | `docker-entrypoint.sh` | Rewrites `health_port` in `SIP_CONFIG_BODY` to match Railway `$PORT` |
-| `railway.toml` | Build + health check |
-| `config/railway-sip.yaml` | `SIP_CONFIG_BODY` template |
+| `railway.toml` | Build; healthcheck off by default (see DEPLOY-SIP.md §10) |
+| `config/railway-sip.yaml` | Full `SIP_CONFIG_BODY` template |
+| `config/railway-sip-minimal.yaml` | Minimal config (no STUN) for debugging |
 | `DEPLOY-SIP.md` | Railway checklist (PORT, TCP proxy, Telnyx, `lk` commands) |
 | `.env.example` | Variable name reference |

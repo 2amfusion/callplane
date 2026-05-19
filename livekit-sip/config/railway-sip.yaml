@@ -24,9 +24,12 @@ sip_port: 5060
 rtp_port: 10000-10100
 
 # Advertise a reachable address in SIP/SDP. After TCP proxy exists:
-# - EITHER keep use_external_ip: true (auto) OR set nat_1_to_1_ip / sip_hostname
+# - EITHER use_external_ip: true (STUN — can FAIL on Railway and exit before health HTTP)
+# - OR set nat_1_to_1_ip / sip_hostname with use_external_ip: false
 # - do NOT set both use_external_ip: true and nat_1_to_1_ip (sip will reject config).
-use_external_ip: true
+# For first deploy / health debugging, omit use_external_ip (see railway-sip-minimal.yaml).
+use_external_ip: false
+# use_external_ip: true
 # nat_1_to_1_ip: YOUR_TCP_PROXY_PUBLIC_IP
 # sip_hostname: sip.callplane.example.com
 

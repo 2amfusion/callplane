@@ -1,0 +1,22 @@
+# Minimal SIP_CONFIG_BODY for Railway — isolate config vs STUN/NAT issues.
+# Replace YOUR_* only. Paste as one multiline variable (no surrounding quotes).
+# Set PORT=8080 on the service. docker-entrypoint.sh aligns health_port to PORT.
+
+api_key: YOUR_KEY_ID
+api_secret: YOUR_KEY_SECRET
+ws_url: wss://callplane-production.up.railway.app
+
+redis:
+  address: YOUR_REDIS_HOST:6379
+  password: YOUR_REDIS_PASSWORD
+
+health_port: 8080
+sip_port: 5060
+rtp_port: 10000-10100
+
+# IMPORTANT: use_external_ip: true runs STUN at startup; if STUN fails the process
+# exits before health HTTP binds (common on restricted networks). Start with false.
+use_external_ip: false
+
+logging:
+  level: info
