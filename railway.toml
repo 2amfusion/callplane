@@ -1,0 +1,14 @@
+# Railway config-as-code for livekit-callplane (Callplane media server).
+# Docs: https://docs.railway.com/config-as-code
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Binary reads LIVEKIT_CONFIG automatically (maps to --config-body in cmd/server/main.go).
+# Set LIVEKIT_CONFIG in Railway Variables to the full YAML (see config/railway-dev.yaml).
+startCommand = "/livekit-server"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"

@@ -1,0 +1,36 @@
+# NON-SECRET template for Railway Phase 1 (Callplane / LiveKit media server).
+#
+# How to use:
+# 1. Copy this file locally and replace every YOUR_* placeholder with real values.
+# 2. In Railway → your livekit-callplane service → Variables, add:
+#      LIVEKIT_CONFIG = <paste the entire YAML below, as one multiline value>
+# 3. Do NOT commit real Redis passwords or API secrets to git.
+#
+# Generate API keys locally:
+#   go run ./cmd/server generate-keys
+#
+# Railway notes:
+# - Expose TCP port 7880 (HTTP/WebSocket) in Railway networking.
+# - UDP port ranges are unreliable on Railway; prefer TCP ICE (tcp_port + allow_tcp_fallback).
+# - Add a Railway Redis plugin (or external Redis) and point redis.address below.
+
+port: 7880
+
+redis:
+  address: YOUR_REDIS_HOST:6379
+  password: YOUR_REDIS_PASSWORD
+
+keys:
+  YOUR_API_KEY: YOUR_API_SECRET
+
+rtc:
+  # TCP fallback when UDP is blocked or unavailable (common on PaaS).
+  tcp_port: 7881
+  allow_tcp_fallback: true
+  use_external_ip: true
+  # Avoid opening a wide UDP range on Railway — omit port_range_start/end or keep narrow if you add UDP later.
+  # port_range_start: 50000
+  # port_range_end: 60000
+
+logging:
+  level: info

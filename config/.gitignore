@@ -1,0 +1,6 @@
+# Local overrides with real secrets — never commit
+*-local.yaml
+*-secrets.yaml
+*.secret.yaml
+.env
+.env.*
