@@ -94,8 +94,10 @@ class BiteBuddyLLM(llm.LLM):
         call_id: str,
         business_phone: str = "",
         customer_phone: str = "",
+        ws_url: str | None = None,
     ) -> BiteBuddyLLM:
-        ws_url = os.environ.get("BITE_BUDDY_WS_URL", "").strip()
+        if not ws_url:
+            ws_url = os.environ.get("BITE_BUDDY_WS_URL", "").strip()
         if not ws_url:
             raise ValueError("BITE_BUDDY_WS_URL is required")
         return cls(
