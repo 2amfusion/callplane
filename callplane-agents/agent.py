@@ -34,9 +34,8 @@ from livekit.agents import (
     AgentSession,
     JobContext,
     JobProcess,
-    MetricsCollectedEvent,
+    TurnHandlingOptions,
     cli,
-    metrics,
     room_io,
 )
 from livekit.plugins import deepgram, elevenlabs, silero, openai as lk_openai, anthropic as lk_anthropic
@@ -177,12 +176,12 @@ async def entrypoint(ctx: JobContext) -> None:
         llm=llm,
         tts=tts,
         vad=ctx.proc.userdata["vad"],
-        turn_detection="vad",  # skip adaptive interruption (LiveKit Cloud only)
+        turn_handling=TurnHandlingOptions(turn_detection="vad"),
     )
 
-    @session.on("metrics_collected")
-    def _on_metrics_collected(ev: MetricsCollectedEvent) -> None:
-        metrics.log_metrics(ev.metrics)
+    @session.on("session_usage_updated")
+    def _on_usage_updated(ev) -> None:
+        pass  # usage tracking placeholder
 
     await session.start(
         agent=CallplaneAgent(instructions=instructions),
