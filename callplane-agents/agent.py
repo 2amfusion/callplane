@@ -164,7 +164,12 @@ async def entrypoint(ctx: JobContext) -> None:
         await llm.connect()
         ctx.add_shutdown_callback(llm.aclose)
 
-    tts = elevenlabs.TTS(voice_id=tts_voice_id) if tts_voice_id else elevenlabs.TTS()
+    tts_provider = agent_config.get("tts_provider") if agent_config else None
+    if tts_provider == "deepgram":
+        tts = deepgram.TTS(model=tts_voice_id) if tts_voice_id else deepgram.TTS()
+    else:
+        tts = elevenlabs.TTS(voice_id=tts_voice_id) if tts_voice_id else elevenlabs.TTS()
+
     stt = deepgram.STT()
 
     session = AgentSession(
